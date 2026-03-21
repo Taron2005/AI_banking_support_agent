@@ -11,6 +11,3 @@ api_key: null
 model: llama-3.1-8b-instant
 timeout_seconds: 20
 temperature: 0.1
-
-# Offline / CI: use mock
-# provider: mock

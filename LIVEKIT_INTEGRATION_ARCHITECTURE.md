@@ -17,6 +17,17 @@ This phase adds a real-time voice transport layer around the existing runtime br
 6. Voice layer sends returned answer text to TTS.
 7. TTS audio bytes are emitted back over transport.
 
+## Data-channel topics (push-to-talk UI)
+
+Reliable data packets (UTF‑8 JSON):
+
+| Topic | Direction | Purpose |
+|-------|-----------|---------|
+| `voice.ptt` | browser → agent | `{"type":"start"}` / `{"type":"end"}` |
+| `voice.state` | agent → browser | `idle`, `listening`, `processing` (optional `detail`: `transcribing` / `answering`), `speaking`, `busy`, `error` |
+| `voice.transcript.final` | agent → browser | `{"text":"…","final":true}` right after STT (before LLM) |
+| `assistant.text` | agent → browser | Answer metadata + `answer_text` (no duplicate user transcript) |
+
 ## Separation of responsibilities
 
 - Voice layer does **not** classify topic, decide refusal, or check evidence.

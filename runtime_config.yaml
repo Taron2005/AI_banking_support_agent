@@ -4,10 +4,12 @@ topic_classifier:
   weak_term_weight: 0.75
 
 followup:
-  short_query_max_tokens: 10
+  short_query_max_tokens: 12
   markers:
     - "իսկ"
     - "նաև"
+    - "ինչը"
+    - "ուր"
     - "and"
     - "what about"
     - "and for"

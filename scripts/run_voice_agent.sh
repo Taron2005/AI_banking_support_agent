@@ -16,9 +16,13 @@ if [[ -z "${LIVEKIT_TOKEN:-}" ]]; then
   echo "  python scripts/generate_livekit_token.py --identity banking-support-agent"
   exit 1
 fi
+VC="voice_config.yaml"
+if [[ ! -f "$VC" ]]; then
+  VC="voice_config.example.yaml"
+fi
 source .venv/bin/activate
 exec python cli.py --config validation_manifest_update_hy.yaml voice-agent \
   --index-name hy_model_index \
   --runtime-config runtime_config.yaml \
   --llm-config llm_config.yaml \
-  --voice-config voice_config.example.yaml
+  --voice-config "$VC"

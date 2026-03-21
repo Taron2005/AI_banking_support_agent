@@ -8,16 +8,20 @@ const VOICE_PROCESSING = "processing";
 const VOICE_SPEAKING = "speaking";
 const VOICE_ERROR = "error";
 
-function voicePhaseLabel(phase) {
+function voicePhaseLabel(phase, detail, recordSeconds) {
   switch (phase) {
     case VOICE_DISCONNECTED:
       return "Disconnected";
     case VOICE_IDLE:
-      return "Ready — tap mic to speak";
-    case VOICE_LISTENING:
-      return "Listening… tap again to send";
+      return "Ready — tap Mic, speak, then Stop & send";
+    case VOICE_LISTENING: {
+      const t = recordSeconds > 0 ? `${recordSeconds}s` : "…";
+      return `Listening (${t}) — tap Stop & send when finished`;
+    }
     case VOICE_PROCESSING:
-      return "Thinking…";
+      if (detail === "transcribing") return "Recognizing speech…";
+      if (detail === "answering") return "Preparing answer (Groq + evidence)…";
+      return "Processing…";
     case VOICE_SPEAKING:
       return "Assistant speaking…";
     case VOICE_ERROR:
@@ -65,15 +69,39 @@ export default function App() {
   const [lkBusy, setLkBusy] = useState(false);
   const [voicePhase, setVoicePhase] = useState(VOICE_DISCONNECTED);
   const [voiceDetail, setVoiceDetail] = useState("");
+  const [voiceProcessingDetail, setVoiceProcessingDetail] = useState("");
+  const [recordSeconds, setRecordSeconds] = useState(0);
   const [voiceLog, setVoiceLog] = useState([]);
   const roomRef = useRef(null);
   const micTrackRef = useRef(null);
   const assistantAudioElRef = useRef(null);
   const bottomRef = useRef(null);
+  const recordTimerRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (voicePhase === VOICE_LISTENING) {
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      setRecordSeconds(0);
+    }
+    return () => {
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+    };
+  }, [voicePhase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,12 +249,14 @@ export default function App() {
         setLkConnected(true);
         setVoicePhase(VOICE_IDLE);
         setVoiceDetail("");
+        setVoiceProcessingDetail("");
         setVoiceLog((prev) => [...prev, `${new Date().toISOString()} Room connected`]);
       });
       room.on(RoomEvent.Disconnected, () => {
         setLkConnected(false);
         setVoicePhase(VOICE_DISCONNECTED);
         setVoiceDetail("");
+        setVoiceProcessingDetail("");
         roomRef.current = null;
       });
       room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
@@ -237,31 +267,55 @@ export default function App() {
           if (t === "voice.state") {
             const j = JSON.parse(text);
             const st = j.state;
+            const det = j.detail ? String(j.detail) : "";
             if (st === "idle") {
               setVoicePhase(VOICE_IDLE);
               setVoiceDetail("");
+              setVoiceProcessingDetail("");
+            } else if (st === "listening") {
+              setVoicePhase(VOICE_LISTENING);
+              setVoiceDetail("");
+              setVoiceProcessingDetail("");
             } else if (st === "processing") {
               setVoicePhase(VOICE_PROCESSING);
+              setVoiceProcessingDetail(det);
               setVoiceDetail("");
             } else if (st === "speaking") {
               setVoicePhase(VOICE_SPEAKING);
               setVoiceDetail("");
+              setVoiceProcessingDetail("");
             } else if (st === "error") {
               setVoicePhase(VOICE_ERROR);
               setVoiceDetail(String(j.detail || "unknown_error"));
+              setVoiceProcessingDetail("");
             } else if (st === "busy") {
-              setVoiceLog((p) => [...p, "Server busy (finish assistant turn first)."]);
+              setVoiceLog((p) => [...p, "Server busy — wait for assistant audio to finish."]);
               setVoicePhase(VOICE_IDLE);
+              setVoiceDetail("Assistant is still answering — try again in a moment.");
+              setVoiceProcessingDetail("");
+            }
+            return;
+          }
+          if (t === "voice.transcript.final") {
+            const j = JSON.parse(text);
+            const tx = String(j.text || "").trim();
+            if (tx) {
+              setMessages((m) => [
+                ...m,
+                {
+                  role: "user",
+                  content: tx,
+                  t: Date.now(),
+                  viaVoice: true,
+                  voiceTranscript: true,
+                },
+              ]);
             }
             return;
           }
           if (t === "assistant.text") {
             const body = JSON.parse(text);
             const ans = body.answer_text || "";
-            const ut = body.user_text || "";
-            if (ut) {
-              setMessages((m) => [...m, { role: "user", content: ut, t: Date.now(), viaVoice: true }]);
-            }
             if (ans) {
               setMessages((m) => [
                 ...m,
@@ -338,6 +392,7 @@ export default function App() {
       }
       await room.localParticipant.publishTrack(track);
       setVoicePhase(VOICE_LISTENING);
+      setVoiceProcessingDetail("");
     } catch (e) {
       setVoicePhase(VOICE_ERROR);
       setVoiceDetail(String(e.message || e));
@@ -382,15 +437,19 @@ export default function App() {
     setLkConnected(false);
     setVoicePhase(VOICE_DISCONNECTED);
     setVoiceDetail("");
+    setVoiceProcessingDetail("");
   }
 
   const voiceStatusLine = useMemo(() => {
-    const base = voicePhaseLabel(voicePhase);
+    const base = voicePhaseLabel(voicePhase, voiceProcessingDetail, recordSeconds);
     if (voiceDetail && voicePhase === VOICE_ERROR) {
       return `${base}: ${voiceDetail}`;
     }
+    if (voiceDetail && voicePhase === VOICE_IDLE) {
+      return `${base} (${voiceDetail})`;
+    }
     return base;
-  }, [voicePhase, voiceDetail]);
+  }, [voicePhase, voiceDetail, voiceProcessingDetail, recordSeconds]);
 
   const micDisabled =
     !lkConnected || lkBusy || voicePhase === VOICE_PROCESSING || voicePhase === VOICE_SPEAKING;
@@ -399,6 +458,7 @@ export default function App() {
     if (voicePhase === VOICE_ERROR) {
       setVoicePhase(VOICE_IDLE);
       setVoiceDetail("");
+      setVoiceProcessingDetail("");
       return;
     }
     if (voicePhase === VOICE_LISTENING) stopVoiceTurn();
@@ -504,7 +564,8 @@ export default function App() {
               <li>Հարցրեք վարկերի, ավանդների կամ մասնաճյուղերի մասին տեքստով (ստորև)։</li>
               <li>
                 Կամ միացրեք ձայնը՝ <strong>Connect voice</strong>, ապա <strong>Mic</strong> — խոսեք հայերեն, ապա{" "}
-                <strong>Stop & send</strong>։
+                <strong>Stop & send</strong>։ Ձեր խոսքը STT-ից հետո կհայտնվի զրույցում՝ <span className="voice-badge">STT</span>{" "}
+                նշանով, ապա՝ պատասխանը։
               </li>
               <li>Պատասխանները հիմնված են միայն բանկերի պաշտոնական տվյալների վրա (Groq + hy_model_index)։</li>
             </ol>
@@ -514,7 +575,12 @@ export default function App() {
           m.role === "user" ? (
             <div key={`u-${i}-${m.t}`} className="bubble-user">
               {m.content}
-              {m.viaVoice ? <span className="voice-badge">voice</span> : null}
+              {m.voiceTranscript ? (
+                <span className="voice-badge" title="Speech recognized (STT)">
+                  STT
+                </span>
+              ) : null}
+              {m.viaVoice && !m.voiceTranscript ? <span className="voice-badge">voice</span> : null}
             </div>
           ) : (
             <div key={`a-${i}-${m.t}`} className="bubble-assistant">

@@ -47,7 +47,7 @@ class GroqChatClient:
     model: str
     timeout_seconds: float
     temperature: float
-    max_tokens: int = 640
+    max_tokens: int = 512
     system_message: str = LLM_SYSTEM_ARMENIAN_EVIDENCE_ONLY
 
     def generate(self, prompt: str) -> str:

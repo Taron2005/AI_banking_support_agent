@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 TOPIC_PTT = "voice.ptt"
 TOPIC_ASSISTANT_TEXT = "assistant.text"
 TOPIC_VOICE_STATE = "voice.state"
+TOPIC_VOICE_TRANSCRIPT_FINAL = "voice.transcript.final"
 
 
 @dataclass(frozen=True)
@@ -63,19 +64,33 @@ class LiveKitVoiceAgent:
         payload: STTInput,
         index_name: str,
     ) -> VoiceTurnResult:
+        if payload.encoding == "text":
+            user_text = payload.content.decode("utf-8", errors="ignore").strip()
+        else:
+            user_text = self._stt.transcribe(payload)
+            if not (user_text or "").strip():
+                logger.warning("STT returned empty text; orchestrator may refuse or mis-route.")
+            elif "[mock-stt-unavailable]" in user_text:
+                logger.warning(
+                    "STT returned mock placeholder (no real transcription). Set VOICE_STT_ENDPOINT in .env "
+                    "for Armenian speech-to-text, or send JSON text via LiveKit data packets."
+                )
+        return self._run_runtime_and_synthesize(
+            participant=participant, user_text=user_text, index_name=index_name
+        )
+
+    def _run_runtime_and_synthesize(
+        self,
+        *,
+        participant: LiveKitParticipantContext,
+        user_text: str,
+        index_name: str,
+    ) -> VoiceTurnResult:
         session_id = build_runtime_session_id(
             room_name=participant.room_name,
             participant_identity=participant.participant_identity,
         )
         state = self._state_store.get_or_create(session_id)
-        user_text = self._stt.transcribe(payload)
-        if not (user_text or "").strip():
-            logger.warning("STT returned empty text; orchestrator may refuse or mis-route.")
-        elif "[mock-stt-unavailable]" in user_text:
-            logger.warning(
-                "STT returned mock placeholder (no real transcription). Set VOICE_STT_ENDPOINT in .env "
-                "for Armenian speech-to-text, or send JSON text via LiveKit data packets."
-            )
         runtime_response = self._runtime.handle(
             RuntimeRequest(
                 session_id=session_id,
@@ -269,6 +284,7 @@ class LiveKitVoiceAgent:
             self._ptt_recording[pid] = True
             self._ptt_buffers[pid] = []
             logger.info("PTT start participant=%s", pid)
+            await self._publish_voice_state(room, state="listening")
             return
 
         if ptype == "end":
@@ -313,18 +329,42 @@ class LiveKitVoiceAgent:
                 room_name=self._voice_config.livekit.room_name,
                 participant_identity=participant_identity,
             )
+            await self._publish_voice_state(room, state="processing", detail="transcribing")
             try:
-                result = self.process_turn(
-                    participant=participant,
-                    payload=STTInput(
+                user_text = self._stt.transcribe(
+                    STTInput(
                         content=wav_bytes,
                         encoding="wav",
                         language=self._voice_config.stt.language,
-                    ),
+                    )
+                )
+            except Exception:
+                logger.exception("STT failed participant=%s", participant_identity)
+                await self._publish_voice_state(room, state="error", detail="stt_failed")
+                await self._publish_voice_state(room, state="idle")
+                return
+
+            tr_packet = json.dumps(
+                {
+                    "text": user_text,
+                    "final": True,
+                    "participant_identity": participant_identity,
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            await room.local_participant.publish_data(
+                tr_packet, reliable=True, topic=TOPIC_VOICE_TRANSCRIPT_FINAL
+            )
+
+            await self._publish_voice_state(room, state="processing", detail="answering")
+            try:
+                result = self._run_runtime_and_synthesize(
+                    participant=participant,
+                    user_text=user_text,
                     index_name=index_name,
                 )
             except Exception:
-                logger.exception("process_turn failed participant=%s", participant_identity)
+                logger.exception("runtime/TTS failed participant=%s", participant_identity)
                 await self._publish_voice_state(room, state="error", detail="processing_failed")
                 await self._publish_voice_state(room, state="idle")
                 return
@@ -333,7 +373,6 @@ class LiveKitVoiceAgent:
             packet = json.dumps(
                 {
                     "session_id": result.session_id,
-                    "user_text": result.user_text,
                     "answer_text": result.runtime_response.answer_text,
                     "status": result.runtime_response.status,
                     "refusal_reason": result.runtime_response.refusal_reason,
@@ -357,14 +396,22 @@ class LiveKitVoiceAgent:
         async with self._turn_lock:
             await self._publish_voice_state(room, state="processing")
             participant_id = str(body.get("participant_identity") or "unknown")
-            text = body.get("text", "")
+            text = str(body.get("text", "") or "")
+            participant = LiveKitParticipantContext(
+                room_name=self._voice_config.livekit.room_name,
+                participant_identity=participant_id,
+            )
+            tr_packet = json.dumps(
+                {"text": text, "final": True, "participant_identity": participant_id},
+                ensure_ascii=False,
+            ).encode("utf-8")
+            await room.local_participant.publish_data(
+                tr_packet, reliable=True, topic=TOPIC_VOICE_TRANSCRIPT_FINAL
+            )
             try:
-                result = self.process_turn(
-                    participant=LiveKitParticipantContext(
-                        room_name=self._voice_config.livekit.room_name,
-                        participant_identity=participant_id,
-                    ),
-                    payload=STTInput(content=text.encode("utf-8"), encoding="text", language=self._voice_config.stt.language),
+                result = self._run_runtime_and_synthesize(
+                    participant=participant,
+                    user_text=text.strip(),
                     index_name=index_name,
                 )
             except Exception:
@@ -377,7 +424,6 @@ class LiveKitVoiceAgent:
             response_body = json.dumps(
                 {
                     "session_id": result.session_id,
-                    "user_text": result.user_text,
                     "answer_text": result.runtime_response.answer_text,
                     "status": result.runtime_response.status,
                     "refusal_reason": result.runtime_response.refusal_reason,

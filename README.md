@@ -50,7 +50,8 @@ LiveKit Cloud URLs are **rejected** by `voice/voice_config.py` (self-hosted OSS 
 3. **STT** — set **`VOICE_STT_ENDPOINT`** to a Whisper-compatible **POST multipart** endpoint: form field **`file`** (WAV), **`language=hy`**, JSON response with transcript in **`text`** (or `transcription`). UTF-8 Armenian preserved.
 4. **TTS** — set **`VOICE_TTS_ENDPOINT`** to a service accepting JSON **`{ text, language, voice, format }`** and returning **WAV** (raw or base64 in `audio_base64` / `audio`).
 5. **Push-to-talk** — browser sends reliable data on topic **`voice.ptt`**: `{"type":"start"}` then publishes mic; `{"type":"end"}` then unpublishes. Agent buffers only while **start** is active.
-6. **Mock / CI** — set **`VOICE_USE_MOCK=1`** or `stt.provider: mock` / `tts.provider: mock` in a copied `voice_config.yaml`.
+6. **Transcript feedback (UI)** — after **Stop & send**, the agent runs STT, then publishes **`voice.transcript.final`** with the recognized text (UTF‑8 Armenian). The React UI shows it in the chat with an **STT** badge *before* the assistant answer. Server **`voice.state`** includes `listening`, `processing` (with `detail`: `transcribing` / `answering`), `speaking`, `idle`, `busy`, `error`.
+7. **Mock / CI** — set **`VOICE_USE_MOCK=1`** or `stt.provider: mock` / `tts.provider: mock` in a copied `voice_config.yaml`.
 
 ### Quick path: run local STT + TTS on your PC
 
@@ -190,11 +191,13 @@ python cli.py --config validation_manifest_update_hy.yaml voice-agent ^
   --index-name hy_model_index ^
   --runtime-config runtime_config.yaml ^
   --llm-config llm_config.yaml ^
-  --voice-config voice_config.example.yaml
+  --voice-config voice_config.yaml
 ```
 
+Copy **`voice_config.example.yaml` → `voice_config.yaml`** (the example is git-tracked; your copy is git-ignored).
+
 **Required env**: `LIVEKIT_URL`, `LIVEKIT_TOKEN`.  
-**Real speech**: set `stt.provider: http_whisper`, `tts.provider: http_tts` in a copied `voice_config.yaml` + `VOICE_STT_ENDPOINT` / `VOICE_TTS_ENDPOINT`.
+**Real speech**: `stt.provider: http_whisper`, `tts.provider: http_tts` in `voice_config.yaml` + **`VOICE_STT_ENDPOINT`** / **`VOICE_TTS_ENDPOINT`** in `.env`.
 
 Smoke test (mock STT/TTS, text queries):
 
@@ -203,8 +206,9 @@ python cli.py --config validation_manifest_update_hy.yaml voice-smoke-test ^
   --index-name hy_model_index ^
   --runtime-config runtime_config.yaml ^
   --llm-config llm_config.yaml ^
-  --voice-config voice_config.example.yaml
+  --voice-config voice_config.yaml
 ```
+(Use `voice_config.example.yaml` if you have not created `voice_config.yaml` yet.)
 
 ## 10. Running the frontend
 
@@ -239,17 +243,17 @@ python -m voice_ai_banking_support_agent.cli build-index --index-name hy_model_i
 2. `llm_config.yaml` — `provider: groq`, `model: llama-3.1-8b-instant`.
 3. `.env` — `GROQ_API_KEY=...` (from [Groq console](https://console.groq.com)).
 
-For offline tests, set `provider: mock` in `llm_config.yaml` or omit `GROQ_API_KEY` (answers fall back to extractive).
+If **`GROQ_API_KEY`** is missing, the runtime **falls back to extractive answers** (still from retrieved chunks only). Automated tests may use a temporary `llm_config` with `provider: mock` (see `tests/`).
 
 ## 14. Limitations
 
 - Bank HTML changes can break scrapers; manifests must be updated.
 - Branch pages may not expose every branch in static HTML.
-- Voice uses ~3 s audio windows (no full VAD rewrite).
+- Voice is **push-to-talk** (no continuous streaming STT); transcript appears after each **Stop & send**.
 - Mock STT on binary audio returns a placeholder unless HTTP STT is configured.
 - Duplicate legacy dataset trees were removed from the submission layout; use paths in `DATASETS.md` only.
 
 ## 15. Further reading
 
-- `ARCHITECTURE.md`, `RUNTIME_ARCHITECTURE.md`, `LIVEKIT_INTEGRATION_ARCHITECTURE.md`
-- `OWNER_GUIDE.md`, `DATASETS.md`, `DEMO_QUICKSTART.md`, `FULL_LOCAL_RUN_GUIDE.md`
+- `ARCHITECTURE.md`, `RUNTIME_ARCHITECTURE.md`, `LIVEKIT_INTEGRATION_ARCHITECTURE.md`, `DATASETS.md`
+- Optional / historical notes: `docs/archive/` (see `docs/archive/README.md`)
