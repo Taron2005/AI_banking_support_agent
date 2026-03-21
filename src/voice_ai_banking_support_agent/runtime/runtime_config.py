@@ -28,14 +28,14 @@ class EvidenceSettings(BaseModel):
 
 
 class AnswerSettings(BaseModel):
-    backend: Literal["extractive", "llm"] = "extractive"
-    max_evidence_chunks: int = 3
-    max_snippet_chars: int = 260
+    backend: Literal["extractive", "llm"] = "llm"
+    max_evidence_chunks: int = 4
+    max_snippet_chars: int = 520
     llm_model_name: str | None = None
 
 
 class RetrievalSettings(BaseModel):
-    default_top_k: int = 6
+    default_top_k: int = 8
 
 
 class RuntimeSettings(BaseModel):

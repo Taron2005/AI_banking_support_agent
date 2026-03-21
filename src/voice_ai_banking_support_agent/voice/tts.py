@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
+import wave
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -10,6 +12,19 @@ import requests
 from .voice_models import TTSOutput
 
 logger = logging.getLogger(__name__)
+
+
+def _silent_wav_bytes(*, duration_s: float = 0.35, sample_rate: int = 24000) -> bytes:
+    """Minimal valid mono s16le WAV for mock TTS (short silence)."""
+    n = int(sample_rate * duration_s)
+    pcm = b"\x00\x00" * n
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm)
+    return buf.getvalue()
 
 
 class TTSProvider(Protocol):
@@ -21,13 +36,14 @@ class MockTTSProvider:
     """
     Mock TTS provider for local development/testing.
 
-    Returns UTF-8 bytes as synthetic speech payload.
+    Returns a short valid WAV (silence) so LiveKit/audio players do not break.
     """
 
     encoding: str = "wav"
 
     def synthesize(self, text: str) -> TTSOutput:
-        return TTSOutput(audio=text.encode("utf-8"), encoding=self.encoding)  # type: ignore[arg-type]
+        _ = text  # length could scale duration in future; keep short for latency
+        return TTSOutput(audio=_silent_wav_bytes(), encoding=self.encoding)
 
 
 @dataclass

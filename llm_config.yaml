@@ -1,0 +1,16 @@
+# LLM: Groq only (OpenAI-compatible chat completions).
+# Runtime uses this when runtime_config.yaml has answer.backend: llm.
+#
+# Set GROQ_API_KEY in .env (recommended) or paste below for local dev only.
+#
+# Fast default on Groq: llama-3.1-8b-instant
+
+provider: groq
+endpoint: null
+api_key: null
+model: llama-3.1-8b-instant
+timeout_seconds: 20
+temperature: 0.1
+
+# Offline / CI: use mock
+# provider: mock

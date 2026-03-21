@@ -16,7 +16,7 @@ class ChatRequest(BaseModel):
     session_id: str
     query: str
     index_name: str
-    top_k: int = 6
+    top_k: int = 8
     verbose: bool = False
 
 
@@ -50,6 +50,14 @@ def build_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok", "service": "voice-ai-banking-runtime"}
+
+    @app.get("/")
+    def root():
+        return {"service": "Voice AI Banking Runtime API", "docs": "/docs", "health": "/health"}
 
     @app.post("/chat")
     def chat(req: ChatRequest):

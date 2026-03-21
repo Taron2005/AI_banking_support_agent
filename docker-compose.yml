@@ -1,0 +1,15 @@
+# Self-hosted LiveKit (dev). API key/secret pair: devkey / secret (same as `livekit-server --dev`).
+# Start: docker compose up -d
+# URL: ws://127.0.0.1:7880
+#
+# See README "Local End-to-End Run" for token generation.
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: ["--dev", "--bind", "0.0.0.0"]
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    restart: unless-stopped

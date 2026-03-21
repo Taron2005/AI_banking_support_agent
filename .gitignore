@@ -34,6 +34,12 @@ Thumbs.db
 *.pem
 *API_KEY*.txt
 
+# Legacy / experimental dataset trees (production = data_manifest_update_hy/)
+data/
+data_manifest_update_multi/
+data_validation/
+data_ameriabank_fix/
+
 # Optional: uncomment if the repo is too large for GitHub (use Git LFS or release assets)
 # data/raw_html/
 # data/index/**/*.index

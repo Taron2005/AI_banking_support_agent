@@ -151,8 +151,8 @@ class FaissVectorStore:
                 "Rebuild index to restore consistency."
             )
 
-        # Fetch extra candidates to compensate for metadata filtering.
-        candidates = max(top_k * 5, top_k)
+        # Fetch extra candidates to compensate for metadata filtering (topic/bank).
+        candidates = max(top_k * 8, top_k)
         scores, ids = index.search(query_embedding, candidates)
 
         results: list[RetrievalResult] = []

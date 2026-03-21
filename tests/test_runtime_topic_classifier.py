@@ -28,5 +28,6 @@ def test_topic_classifier_in_scope_english_deposit() -> None:
 def test_topic_classifier_ambiguous_when_only_weak_signals() -> None:
     clf = TopicClassifier()
     out = clf.classify("What is the interest?")
-    assert out.label in {"ambiguous", "deposit", "credit"}
+    assert out.label == "ambiguous"
+    assert out.reason == "weak_topic_signals_only_need_explicit_product"
 

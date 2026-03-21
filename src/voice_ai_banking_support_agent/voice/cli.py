@@ -4,6 +4,16 @@ import argparse
 import json
 from pathlib import Path
 
+try:
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    _root = Path(__file__).resolve().parents[3]
+    load_dotenv(_root / ".env")
+except ImportError:
+    pass
+
 from ..config import load_config
 from ..runtime.llm_config import load_llm_settings
 from ..runtime.runtime_config import load_runtime_settings
@@ -100,7 +110,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--project-root", type=str, default=".")
     p.add_argument("--config", type=str, default=None)
     p.add_argument("--runtime-config", type=str, default=None)
-    p.add_argument("--llm-config", type=str, default=None)
+    p.add_argument("--llm-config", type=str, default="llm_config.yaml")
     p.add_argument("--voice-config", type=str, default=None)
     p.add_argument("--index-name", type=str, required=True)
     p.add_argument("--mode", choices=["smoke", "livekit"], default="smoke")

@@ -1,16 +1,18 @@
 topic_classifier:
-  ambiguous_margin: 0.2
+  ambiguous_margin: 0.12
   strong_term_weight: 1.5
   weak_term_weight: 0.75
 
 followup:
-  short_query_max_tokens: 6
+  short_query_max_tokens: 8
   markers:
     - "իսկ"
     - "and"
     - "what about"
     - "and for"
     - "also"
+    - "բայց"
+    - "իմա"
   city_terms:
     - "երևան"
     - "գյումրի"
@@ -19,7 +21,7 @@ followup:
 
 evidence:
   min_chunks: 1
-  min_top_score: 0.15
+  min_top_score: 0.2
   branch_address_patterns:
     - "հասցե"
     - "address"
@@ -27,13 +29,13 @@ evidence:
     - "փողոց"
 
 answer:
-  backend: "extractive"  # switch to "llm" only with configured client in code
-  max_evidence_chunks: 3
-  max_snippet_chars: 260
+  backend: "llm"
+  max_evidence_chunks: 4
+  max_snippet_chars: 520
   llm_model_name: null
 
 retrieval:
-  default_top_k: 6
+  default_top_k: 8
 
 bank_aliases:
   ameriabank: ["ameriabank", "ameria", "ամերիա", "ամերիաբանկ"]

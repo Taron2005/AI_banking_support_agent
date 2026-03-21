@@ -62,6 +62,13 @@ class LiveKitVoiceAgent:
         )
         state = self._state_store.get_or_create(session_id)
         user_text = self._stt.transcribe(payload)
+        if not (user_text or "").strip():
+            logger.warning("STT returned empty text; orchestrator may refuse or mis-route.")
+        elif "[mock-stt-unavailable]" in user_text:
+            logger.warning(
+                "STT is mock/non-audio mode for this payload. For real speech, set stt.provider=http_whisper "
+                "and VOICE_STT_ENDPOINT, or send JSON text via LiveKit data packets."
+            )
         runtime_response = self._runtime.handle(
             RuntimeRequest(
                 session_id=session_id,
@@ -105,7 +112,16 @@ class LiveKitVoiceAgent:
         )
         room = rtc.Room()
         token = self._load_livekit_token()
-        await room.connect(self._voice_config.livekit.url, token)
+        try:
+            await room.connect(self._voice_config.livekit.url, token)
+        except Exception as exc:
+            logger.error(
+                "LiveKit connect failed url=%s (check LIVEKIT_URL, token scope, and server).",
+                self._voice_config.livekit.url,
+            )
+            raise RuntimeError(
+                "Could not connect to LiveKit. Verify LIVEKIT_URL, LIVEKIT_TOKEN, and that the server is running."
+            ) from exc
 
         # Publish one agent output audio track for synthesized responses.
         out_source = rtc.AudioSource(sample_rate=24000, num_channels=1)

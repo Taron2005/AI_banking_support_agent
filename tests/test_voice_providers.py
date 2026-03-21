@@ -1,3 +1,6 @@
+import io
+import wave
+
 from voice_ai_banking_support_agent.voice.stt import MockSTTProvider
 from voice_ai_banking_support_agent.voice.tts import MockTTSProvider
 from voice_ai_banking_support_agent.voice.voice_models import STTInput
@@ -14,6 +17,9 @@ def test_mock_tts_returns_bytes() -> None:
     out = tts.synthesize("text")
     assert isinstance(out.audio, bytes)
     assert len(out.audio) > 0
+    with wave.open(io.BytesIO(out.audio), "rb") as wf:
+        assert wf.getnchannels() == 1
+        assert wf.getsampwidth() == 2
 
 
 def test_mock_stt_non_text_fallback() -> None:

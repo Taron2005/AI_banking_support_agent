@@ -22,7 +22,7 @@ class RuntimeRequest:
     session_id: str
     query: str
     index_name: str
-    top_k: int = 6
+    top_k: int = 8
     verbose: bool = False
 
 
@@ -38,7 +38,7 @@ class RuntimeOrchestrator:
         followup_resolver: FollowUpResolver | None = None,
         evidence_checker: EvidenceChecker | None = None,
         answer_generator: AnswerBackend | None = None,
-        default_top_k: int = 6,
+        default_top_k: int = 8,
     ) -> None:
         self._retriever = retriever
         self._topic_classifier = topic_classifier or TopicClassifier()

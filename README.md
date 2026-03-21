@@ -1,308 +1,237 @@
-# Voice AI Banking Support Agent (Offline RAG Pipeline)
+# Armenian Voice AI Banking Support Agent
 
-This repository contains the **first phase** of an Armenian voice AI banking support agent: an **offline data ingestion + retrieval preparation pipeline**.
+End-to-end demo: **official bank website data** (3 Armenian banks) → **chunked embeddings (FAISS)** → **rules-first runtime** (credits / deposits / branches only) → optional **HTTP STT/TTS** + **self-hosted LiveKit** voice transport.
 
-It is designed to:
-- ingest official bank website pages for **Credits**, **Deposits**, and **Branch Locations** (for 3 initial banks),
-- clean and normalize the extracted content,
-- parse branch pages into structured records (when possible),
-- chunk documents in a section-aware way (RAG-ready),
-- compute embeddings using a configurable model,
-- store processed artifacts locally and build a local vector index,
-- provide a lightweight CLI to inspect retrieval quality.
+## 1. Project overview
 
-It intentionally does **not** implement the voice layer (LiveKit) or any online question-answering yet.
+- **Ingestion**: manifest-driven scraping from ACBA, Ameriabank, IDBank (`manifests/banks.yaml`).
+- **Retrieval**: `Metric-AI/armenian-text-embeddings-2-large` + **FAISS** (`indexing/`).
+- **Runtime**: follow-up merge → topic gate → bank filter → retrieval → evidence check → **Groq-grounded Armenian answers** with extractive fallback (`runtime/`).
+- **Voice**: Python agent joins a **self-hosted LiveKit** room, runs STT → runtime → TTS (`voice/`).
+- **API**: FastAPI `/chat` for text QA (`run_runtime_api.py`).
+- **UI**: React chat + optional LiveKit mic (`frontend-react/`).
 
-## Architecture Overview (High Level)
+## 2. Architecture (short)
 
-1. **Manifests / Config** define which URLs are allowed per bank and topic.
-2. **Scrapers** fetch HTML for allowed pages (offline, at indexing time only).
-3. **Extraction** converts HTML into main text and splits it into sections.
-4. **Branch Parsing** attempts to extract structured branch records from branch pages.
-5. **Cleaning + Validation** removes noise and skips low-value extractions.
-6. **Chunking** creates section-aware text chunks with headings preserved.
-7. **Embedding** converts chunks to vectors using a configurable embedding model.
-8. **Vector Store** builds and persists a local FAISS index + metadata.
-9. **CLI** provides commands for scraping, indexing, and a retrieval demo.
-
-Detailed references:
-- `ARCHITECTURE.md`
-- `CODE_WALKTHROUGH.md`
-- `EXPLAINED_PIPELINE.md`
-
-## Setup
-
-1. Install Python 3.10+.
-2. Create and activate a virtual environment.
-3. Install dependencies:
-   - `pip install -r requirements.txt`
-   - `pip install -e ".[dev]"`
-4. (Optional) If you later want Playwright-based fetching:
-   - `pip install -e ".[playwright]"`
-5. Copy env template if needed:
-   - `.env.example` -> `.env` (optional; used for runtime overrides).
-
-## Project Layout
-
-The code lives under `src/voice_ai_banking_support_agent/` and is intentionally modular.
-Manifests are in `manifests/`.
-
-## How to Run Scraping (Dataset Build)
-
-Use the dataset builder pipeline. Examples:
-
-```bash
-python -m voice_ai_banking_support_agent.cli scrape ^
-  --banks acba ameriabank idbank ^
-  --topics credit deposit branch
+```
+User (text or audio)
+  → [LiveKit + STT optional] → text query
+  → RuntimeOrchestrator: normalize → follow-up resolve → topic classify → bank detect → retrieve (FAISS + filters) → evidence → Groq (evidence-only) or extractive fallback
+  → [TTS optional] → audio
 ```
 
-This downloads allowed HTML pages, extracts and cleans content, parses branch records, and writes JSONL artifacts under `data/` (raw HTML, cleaned docs, chunks, branches).
+LiveKit Cloud URLs are **rejected** by `voice/voice_config.py` (self-hosted OSS only).
 
-Quality features in current version:
-- strict manifest validation
-- retries/timeouts/session reuse
-- deterministic raw artifact naming
-- de-duplicated JSONL appends
-- failure ratio guard for safer pipeline runs
+## 3. Data pipeline
 
-## How to Build the Vector Index
+1. `scrape` — fetch manifest URLs, clean HTML, chunk → JSONL under dataset dir.
+2. `build-index` — embed chunks, write `faiss.index` + `metadata.jsonl`.
+
+**Production dataset (submission default)** — see `DATASETS.md`:
+
+| Item | Value |
+|------|--------|
+| Config YAML | `validation_manifest_update_hy.yaml` |
+| Root folder | `data_manifest_update_hy/` |
+| Index name | `hy_model_index` |
+
+## 4. Runtime flow
+
+1. **TopicClassifier** — only `credit`, `deposit`, `branch`; weak-only queries → **ambiguous** (refusal to clarify). Unsupported intents → refusal.
+2. **RuntimeRetriever** — query embedding + FAISS search with **topic** and optional **bank** metadata filters.
+3. **EvidenceChecker** — minimum similarity + branch/address heuristics when needed.
+4. **LLMAnswerGenerator** (default when `answer.backend: llm`) — **Groq** only; user prompt lists numbered evidence blocks; system prompt in `runtime/llm.py` forbids facts outside evidence.
+5. **GroundedAnswerGenerator** — deterministic extractive fallback if Groq is unavailable, declines, or errors.
+
+## 5. Voice flow
+
+1. Set `LIVEKIT_URL`, `LIVEKIT_TOKEN` (and generate token with your server keys).
+2. Optional: `VOICE_STT_ENDPOINT`, `VOICE_TTS_API_KEY`, etc. for real speech (`voice_config.example.yaml`).
+3. Run `voice-agent` (see below). Mock STT returns a placeholder for raw audio unless HTTP STT is configured.
+
+## 6. Model choices
+
+| Component | Choice | Why |
+|-----------|--------|-----|
+| Embeddings | `Metric-AI/armenian-text-embeddings-2-large` | Armenian-centric retrieval quality. |
+| Answers | **Groq** (`llama-3.1-8b-instant`) after evidence gate | Fast, fluent Armenian; still grounded on retrieved chunks only. |
+| Fallback | Extractive snippets | Used when `GROQ_API_KEY` is missing or the API errors. |
+| STT/TTS | Pluggable HTTP | Bring your Whisper / Piper / Coqui endpoint. |
+
+Set **`GROQ_API_KEY`** in `.env` for fluent answers; without it, the stack falls back to extractive text automatically.
+
+## 7. Setup
+
+**Prerequisites**: Python **3.10+**, Node **18+** (for React), optional self-hosted [LiveKit server](https://github.com/livekit/livekit).
 
 ```bash
-python -m voice_ai_banking_support_agent.cli build-index ^
-  --index-name armenian_banks ^
-  --banks acba ameriabank idbank ^
-  --topics credit deposit branch
+cd "Voice AI banking support agent"
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+pip install -r requirements.txt
+pip install -e ".[dev]"
+pip install -e ".[voice]"       # only for LiveKit Python SDK
 ```
 
-## How to Run the Retrieval Demo
+Copy `.env.example` → `.env` and adjust (optional). Split templates: `.env.backend.example`, `.env.voice.example`, `.env.frontend.example`.
+
+**Install embedding model** on first retrieval (downloads from Hugging Face).
+
+### Helper scripts (Windows / Linux)
+
+| Step | Windows | Linux / macOS |
+|------|---------|----------------|
+| Create venv + install | `scripts\setup_env.bat` | `bash scripts/setup_env.sh` |
+| LiveKit (Docker) | `scripts\run_livekit.bat` | `bash scripts/run_livekit.sh` |
+| Backend API | `scripts\run_backend.bat` | `bash scripts/run_backend.sh` |
+| Frontend | `scripts\run_frontend.bat` | `bash scripts/run_frontend.sh` |
+| Voice agent | `scripts\run_voice_agent.bat` (needs `LIVEKIT_TOKEN`) | `bash scripts/run_voice_agent.sh` |
+
+Token (requires `pip install -e ".[voice]"` for `livekit-api`):
 
 ```bash
-python -m voice_ai_banking_support_agent.cli demo-retrieve ^
-  --index-name armenian_banks ^
-  --query "Որքա՞ն է վարկի տոկոսադրույքը" ^
-  --topic credit ^
-  --bank acba ^
-  --top-k 5
+python scripts/generate_livekit_token.py --identity banking-support-agent
+python scripts/generate_livekit_token.py --identity web-user-1
 ```
 
-The CLI prints retrieved chunks plus their metadata (bank/topic/url/chunk id/section title).
+## 7b. Local end-to-end run (ordered checklist)
 
-Tip: `--bank` accepts either bank key (`acba`) or display name (`ACBA Bank`).
+**Canonical paths**: `validation_manifest_update_hy.yaml`, `data_manifest_update_hy/`, index `hy_model_index`, **`llm_config.yaml`** + **`runtime_config.yaml`** (`answer.backend: llm`).
 
-## Current Limitations
+1. **Clone / cd** into the repository root.
+2. **Python venv**  
+   - Windows: `scripts\setup_env.bat`  
+   - Linux/macOS: `bash scripts/setup_env.sh`  
+   Or manually: `python -m venv .venv`, activate, `pip install -r requirements.txt`, `pip install -e ".[dev,voice]"`.
+3. **Environment**  
+   - Copy `.env.example` → `.env`.  
+   - Frontend (optional): `frontend-react/.env.example` → `.env.local`.
+4. **LiveKit (Docker)**  
+   - `docker compose up -d` (or `scripts\run_livekit.bat` / `run_livekit.sh`).  
+   - Dev keys: `LIVEKIT_API_KEY=devkey`, `LIVEKIT_API_SECRET=secret`, `LIVEKIT_URL=ws://127.0.0.1:7880`.
+5. **Generate JWTs**  
+   - Agent: `python scripts/generate_livekit_token.py --identity banking-support-agent` → set `LIVEKIT_TOKEN` in `.env`.  
+   - Browser (React LiveKit panel): generate a second token with `--identity web-user-1` and paste into the UI.
+6. **Backend**  
+   - `python run_runtime_api.py` (loads `.env` via `python-dotenv`).  
+   - Check `http://127.0.0.1:8000/health` → `{"status":"ok",...}` and `/docs` for OpenAPI.
+7. **Frontend**  
+   - `cd frontend-react && npm install && npm run dev` — default index `hy_model_index`, API from `VITE_API_BASE_URL` or `http://127.0.0.1:8000`.
+8. **Voice agent**  
+   - With `LIVEKIT_TOKEN` set: `scripts\run_voice_agent.bat` or the `python cli.py ... voice-agent` command under §9.  
+   - **Mock mode** (default `voice_config.example.yaml`): text and smoke tests work; **raw mic audio** without HTTP STT yields a placeholder transcript unless you configure `http_whisper`.
+9. **Groq**  
+   - `llm_config.yaml` → `provider: groq` and `GROQ_API_KEY` in `.env` (see `.env.example`).
 
-- URL extraction rules and branch-table heuristics are **best-effort**. If a bank changes HTML structure, you may need to adjust parsing heuristics in the relevant scraper/extraction module.
-- Retrieval demo uses **embeddings + vector search only** for now. BM25/hybrid is not implemented yet (interfaces are designed to allow later addition).
-- Chunking avoids mixing unrelated sections, but you may want to tune chunk sizes based on observed page layouts.
-- Ameriabank now uses targeted DNN module API payload extraction for pages where server HTML is a shell. Structured branch records still remain head-office-centric (single-record fallback per URL), so deeper per-branch structured extraction is a remaining improvement area.
+### Mock vs real voice
 
-## Future Next Step
+| Mode | What works |
+|------|------------|
+| **Mock STT/TTS** | Voice smoke (`voice-smoke-test`), data-packet text path, valid silent mock WAV for TTS. |
+| **Real STT/TTS** | Set `VOICE_STT_ENDPOINT` / `VOICE_TTS_ENDPOINT` and `provider: http_whisper` / `http_tts` in a copied `voice_config.yaml`. |
 
-After this phase is stable, the next step is to connect:
-- topic routing (using the retrieved metadata + a future LLM router),
-- the online voice layer (LiveKit),
-- and answer generation (not built in this phase).
+### Troubleshooting
 
-## Runtime Text QA (Next Phase)
+- **`LIVEKIT_TOKEN` missing** — voice agent exits immediately; generate with `scripts/generate_livekit_token.py`.  
+- **Docker: port 7880 in use** — stop other LiveKit or change host port in `docker-compose.yml`.  
+- **First `/chat` is slow** — embedding model download / FAISS load on cold start.  
+- **CORS** — API allows `*`; if the browser still blocks, check `VITE_API_BASE_URL` matches the API origin.  
+- **`livekit-api` ImportError** on token script — run `pip install -e ".[voice]"`.
 
-Runtime layer is now available for text-only orchestration before voice integration:
+## 8. Running the API (default: production config)
 
-- `python cli.py --config validation_manifest_update_hy.yaml runtime-chat --index-name <index_name>`
-- `python cli.py --config validation_manifest_update_hy.yaml runtime-eval --index-name <index_name>`
-- Optional runtime refinement config:
-  - `--runtime-config runtime_config.yaml`
-- Optional decision tracing:
-  - `--verbose`
+From repo root — **no extra flags required**:
 
-What runtime adds:
-- rules-first topic control (`credit/deposit/branch` only),
-- bank detection + lightweight follow-up resolution,
-- topic/bank-filtered retrieval,
-- evidence sufficiency checks,
-- grounded Armenian responses,
-- explicit refusal paths for unsupported/out-of-scope queries.
+```bash
+python run_runtime_api.py
+```
 
-## LiveKit Voice Integration (Self-hosted)
+Defaults:
 
-Voice layer wraps runtime core without duplicating business logic:
-- STT -> runtime orchestrator -> TTS
-- runtime status/refusal is preserved verbatim in spoken output.
-- **Self-hosted/open-source LiveKit only**. LiveKit Cloud must not be used in this project.
+- `--config validation_manifest_update_hy.yaml`
+- `--runtime-config runtime_config.yaml`
+- `--llm-config llm_config.yaml`
+- `http://127.0.0.1:8000`
 
-### Commands
+**POST** `/chat` JSON body:
 
-- Voice smoke (mock STT/TTS, local logic test):
-  - `python cli.py --config demo_config.yaml voice-smoke-test --index-name multi_model_index --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --voice-config voice_config.example.yaml`
+```json
+{
+  "session_id": "eval-session-1",
+  "query": "Ամերիաբանկում ինչ ավանդներ կան",
+  "index_name": "hy_model_index",
+  "top_k": 8,
+  "verbose": true
+}
+```
 
-- Self-hosted LiveKit agent:
-  - `python cli.py --config demo_config.yaml voice-agent --index-name multi_model_index --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --voice-config voice_config.example.yaml`
+## 9. Running the voice agent
 
-- One-file frontend (local text UI for self-testing):
-  - `python frontend_demo.py --config demo_config.yaml --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --index-name multi_model_index --port 8080`
-  - open `http://127.0.0.1:8080`
+```bash
+python cli.py --config validation_manifest_update_hy.yaml voice-agent ^
+  --index-name hy_model_index ^
+  --runtime-config runtime_config.yaml ^
+  --llm-config llm_config.yaml ^
+  --voice-config voice_config.example.yaml
+```
 
-- Minimal React frontend (optional):
-  - start API: `python run_runtime_api.py --config demo_config.yaml --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --host 127.0.0.1 --port 8000`
-  - start UI: `cd frontend-react && npm install && npm run dev`
-  - open Vite URL (usually `http://127.0.0.1:5173`)
+**Required env**: `LIVEKIT_URL`, `LIVEKIT_TOKEN`.  
+**Real speech**: set `stt.provider: http_whisper`, `tts.provider: http_tts` in a copied `voice_config.yaml` + `VOICE_STT_ENDPOINT` / `VOICE_TTS_ENDPOINT`.
 
-- Runtime eval with optional LLM backend:
-  - `python cli.py --config demo_config.yaml runtime-eval --index-name multi_model_index --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --verbose`
+Smoke test (mock STT/TTS, text queries):
 
-### LiveKit env/config
+```bash
+python cli.py --config validation_manifest_update_hy.yaml voice-smoke-test ^
+  --index-name hy_model_index ^
+  --runtime-config runtime_config.yaml ^
+  --llm-config llm_config.yaml ^
+  --voice-config voice_config.example.yaml
+```
 
-- `LIVEKIT_URL`
-- `LIVEKIT_API_KEY`
-- `LIVEKIT_API_SECRET`
-- `LIVEKIT_TOKEN` (required for current self-hosted transport loop)
+## 10. Running the frontend
 
-Recommended local self-hosted values:
-- `LIVEKIT_URL=ws://127.0.0.1:7880`
-- `LIVEKIT_API_KEY=devkey`
-- `LIVEKIT_API_SECRET=secret`
+```bash
+python run_runtime_api.py
+cd frontend-react
+npm install
+npm run dev
+```
 
-### Notes
+Open the Vite URL (usually `http://127.0.0.1:5173`). Set `VITE_API_BASE_URL` if the API is not on `127.0.0.1:8000`.
 
-- Install optional voice dependency when needed:
-  - `pip install .[voice]`
-- Voice startup validates `LIVEKIT_URL` and refuses LiveKit Cloud domains.
-- Voice providers are config-swappable:
-  - STT: `mock`, `http_whisper`
-  - TTS: `mock`, `http_tts`
-- Real provider mode requires self-hosted/local HTTP STT/TTS endpoints.
-- LLM mode is configurable via `llm_config.example.yaml`:
-  - `provider: mock` for deterministic local tests
-  - `provider: openai_compatible_http` for real endpoint mode
-- If LLM fails/timeouts/returns unusable output, runtime falls back to extractive safely.
-- Current phase provides demo-ready practical integration while preserving runtime safety gates.
+Default UI index: **`hy_model_index`** (matches API defaults).
 
-## Quick Start Docs
+## 11. CLI: scrape & index (rebuild from source)
 
-- `DEMO_QUICKSTART.md`
-- `FULL_LOCAL_RUN_GUIDE.md`
-- `END_TO_END_VALIDATION_REPORT.md`
-- `FINAL_SUBMISSION_READINESS.md`
+```bash
+python -m voice_ai_banking_support_agent.cli scrape --banks acba ameriabank idbank --topics credit deposit branch --config validation_manifest_update_hy.yaml
+python -m voice_ai_banking_support_agent.cli build-index --index-name hy_model_index --banks acba ameriabank idbank --topics credit deposit branch --config validation_manifest_update_hy.yaml
+```
 
-### Self-hosted LiveKit quick setup
+## 12. Guardrails
 
-1. Install/start LiveKit server locally (self-hosted OSS):
-   - `livekit-server --dev`
-2. Generate API key/secret (self-hosted):
-   - `livekit-server generate-keys`
-3. Generate room token for agent run:
-   - `lk token create --api-key <KEY> --api-secret <SECRET> --join --room banking-support-room --identity banking-support-agent`
-4. Export env:
-   - `LIVEKIT_URL=ws://127.0.0.1:7880`
-   - `LIVEKIT_API_KEY=<KEY>`
-   - `LIVEKIT_API_SECRET=<SECRET>`
-   - `LIVEKIT_TOKEN=<TOKEN_FROM_STEP_3>`
+- **Topics**: only credit / deposit / branch; other → refusal or ambiguous.
+- **Retrieval**: FAISS + metadata filters; not whole-corpus prompting.
+- **Evidence**: low similarity → refusal (`insufficient_evidence`).
+- **LLM** (if enabled): system prompt forbids facts outside provided evidence block; empty evidence → extractive fallback.
 
----
+## 13. Groq setup
 
-## CODE WALKTHROUGH
-See `CODE_WALKTHROUGH.md` for the maintained file-by-file walkthrough.
+1. `runtime_config.yaml` — `answer.backend: llm` (default in this repo).
+2. `llm_config.yaml` — `provider: groq`, `model: llama-3.1-8b-instant`.
+3. `.env` — `GROQ_API_KEY=...` (from [Groq console](https://console.groq.com)).
 
-## HOW TO EXTEND TO A 4TH BANK
+For offline tests, set `provider: mock` in `llm_config.yaml` or omit `GROQ_API_KEY` (answers fall back to extractive).
 
-1. Add bank entry to `manifests/banks.yaml` with non-empty URLs for all 3 topics.
-2. Create `src/voice_ai_banking_support_agent/scrapers/<new_bank>.py`.
-3. Implement:
-   - `extraction_rules()`
-   - `branch_parsing_hints()`
-   - `fetch_structured()` (API/JSON first, DOM fallback).
-4. Register scraper in `BANK_SCRAPERS` map inside `build_dataset.py`.
-5. Add tests similar to `test_bank_specific_extraction.py` and `test_structured_fetchers.py`.
-6. Run: scrape -> build-index -> demo-retrieve, then inspect data artifacts.
+## 14. Limitations
 
-## WHAT TO DO NEXT FOR ONLINE QA + LIVEKIT STAGE
+- Bank HTML changes can break scrapers; manifests must be updated.
+- Branch pages may not expose every branch in static HTML.
+- Voice uses ~3 s audio windows (no full VAD rewrite).
+- Mock STT on binary audio returns a placeholder unless HTTP STT is configured.
+- Duplicate legacy dataset trees were removed from the submission layout; use paths in `DATASETS.md` only.
 
-Do not build it yet, but prepare this order:
-1. Add retrieval-to-answer orchestration with citation-preserving prompt format.
-2. Add topic router that leverages metadata filters (`topic`, `bank_key`).
-3. Add safety layer (no fabricated rates, fallback to "need human agent").
-4. Integrate STT/TTS + session state (LiveKit or equivalent).
-5. Add latency budget + observability (query logs, retrieval traces, answer confidence).
+## 15. Further reading
 
-### `cli.py` (repo root)
-Thin wrapper that lets you run `python cli.py ...` without installing the package.
-
-### `src/voice_ai_banking_support_agent/config.py`
-Loads configuration (paths, embedding model, retry/network settings) and validates high-level pipeline settings.
-
-### `src/voice_ai_banking_support_agent/models.py`
-Defines typed Pydantic models for documents, chunk metadata, branch records, and topic labels.
-
-### `src/voice_ai_banking_support_agent/bank_manifest.py`
-Loads `manifests/banks.yaml` and validates that the manifest schema is correct and that URLs look like HTTP(S) links.
-
-### `src/voice_ai_banking_support_agent/utils/logging.py`
-Sets up robust logging with console + optional file handlers.
-
-### `src/voice_ai_banking_support_agent/scrapers/base.py`
-Implements the offline fetcher with retries, timeouts, and a basic HTML response container.
-
-### `src/voice_ai_banking_support_agent/scrapers/acba.py`
-ACBA-specific branch parsing keyword hints (keeps bank heuristics out of the shared parser).
-
-### `src/voice_ai_banking_support_agent/scrapers/ameriabank.py`
-Ameriabank-specific branch parsing keyword hints.
-
-### `src/voice_ai_banking_support_agent/scrapers/idbank.py`
-IDBank-specific branch parsing keyword hints.
-
-### `src/voice_ai_banking_support_agent/extraction/cleaning.py`
-Main-text extraction + cleaning + normalization.
-
-### `src/voice_ai_banking_support_agent/extraction/section_parser.py`
-Turns cleaned HTML content into a list of sections (title + content).
-
-### `src/voice_ai_banking_support_agent/extraction/branch_parser.py`
-Attempts to parse structured branch records (name/city/address/hours/phone) from branch pages.
-
-### `src/voice_ai_banking_support_agent/indexing/chunker.py`
-Section-aware chunking that preserves headings and keeps related details together.
-
-### `src/voice_ai_banking_support_agent/indexing/embedder.py`
-Wraps the embedding model (default: `Metric-AI/armenian-text-embeddings-2-large`) and produces normalized vectors.
-
-### `src/voice_ai_banking_support_agent/indexing/vector_store.py`
-Creates/persists a local FAISS index and a JSONL metadata mapping from vector ids to chunk metadata.
-
-### `src/voice_ai_banking_support_agent/pipelines/build_dataset.py`
-End-to-end offline ingestion:
-fetch allowed pages -> extract -> clean -> parse -> chunk -> write JSONL artifacts.
-
-### `src/voice_ai_banking_support_agent/pipelines/build_index.py`
-Reads chunk JSONL artifacts -> embeds -> builds/persists FAISS index.
-
-### `src/voice_ai_banking_support_agent/cli.py`
-Provides CLI commands: `scrape`, `build-index`, `demo-retrieve`, `inspect-doc`, `discover-urls`.
-
-### `tests/`
-Unit tests for topic validation, cleaning/noise removal, chunking behavior, branch parsing, and manifest loading.
-
-## HOW TO MODIFY THIS PROJECT SAFELY
-
-1. Update `manifests/banks.yaml` first when you want to add/remove pages (avoid scattering URL changes in code).
-   - Use `discover-urls` to generate candidate links for manual review before adding them to manifest.
-2. Prefer editing extraction heuristics (cleaning/section/branch parsing) instead of altering the pipeline contract.
-3. Keep the following interfaces stable:
-   - manifest loader output schema,
-   - chunk metadata schema,
-   - vector store `add()` and `search()` contracts.
-4. Add/extend unit tests for any new parsing behavior. This project is designed so parsing regressions are easy to catch locally.
-
-## KNOWN RISKS / NEXT IMPROVEMENTS
-
-- Branch parsing may fail on certain bank pages; improve heuristics by comparing failures and adding targeted parsing rules.
-- Some bank pages (notably dynamic service-network map pages) may not expose full branch data in static HTML. In those cases, manual endpoint discovery or browser-network capture may still be required to reach full coverage.
-- Embedding quality depends on chunk size and cleanliness; improve chunking after inspecting retrieval outputs.
-- Consider adding hybrid retrieval (BM25 + embeddings) later; the architecture is set up to allow it with minimal changes.
-
-## Why Offline Indexed Retrieval Beats Crawling at Query Time
-
-- Bank pages often have rate limits, dynamic content, and frequent layout changes. Crawling during every user query is brittle and slow.
-- Offline indexing produces repeatable artifacts, consistent cleaning/chunking, and predictable retrieval latency.
-- It also lets you validate extraction quality once (with unit tests + CLI inspection), instead of relying on live crawling under unpredictable conditions.
-
+- `ARCHITECTURE.md`, `RUNTIME_ARCHITECTURE.md`, `LIVEKIT_INTEGRATION_ARCHITECTURE.md`
+- `OWNER_GUIDE.md`, `DATASETS.md`, `DEMO_QUICKSTART.md`, `FULL_LOCAL_RUN_GUIDE.md`

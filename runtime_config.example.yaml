@@ -1,26 +1,41 @@
+# Mirrors production defaults; copy to runtime_config.yaml to customize.
 topic_classifier:
-  ambiguous_margin: 0.2
+  ambiguous_margin: 0.12
   strong_term_weight: 1.5
   weak_term_weight: 0.75
 
 followup:
-  short_query_max_tokens: 6
-  markers: ["իսկ", "and", "what about", "and for", "also"]
-  city_terms: ["երևան", "գյումրի", "yerevan", "gyumri"]
+  short_query_max_tokens: 8
+  markers:
+    - "իսկ"
+    - "and"
+    - "what about"
+    - "and for"
+    - "also"
+    - "բայց"
+  city_terms:
+    - "երևան"
+    - "գյումրի"
+    - "yerevan"
+    - "gyumri"
 
 evidence:
   min_chunks: 1
-  min_top_score: 0.15
-  branch_address_patterns: ["հասցե", "address", "street", "փողոց"]
+  min_top_score: 0.2
+  branch_address_patterns:
+    - "հասցե"
+    - "address"
+    - "street"
+    - "փողոց"
 
 answer:
-  backend: "extractive"  # "extractive" or "llm" (LLM uses llm_config/env + safe fallback)
-  max_evidence_chunks: 3
-  max_snippet_chars: 260
+  backend: "llm"
+  max_evidence_chunks: 4
+  max_snippet_chars: 520
   llm_model_name: null
 
 retrieval:
-  default_top_k: 6
+  default_top_k: 8
 
 bank_aliases:
   ameriabank: ["ameriabank", "ameria", "ամերիա", "ամերիաբանկ"]

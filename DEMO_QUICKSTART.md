@@ -9,15 +9,16 @@ pip install -e ".[dev,voice]"
 
 ## 2) Use demo-ready config
 
-- App config: `demo_config.yaml`
+- App config: `validation_manifest_update_hy.yaml`
 - Runtime config: `runtime_config.yaml`
 - Voice config: `voice_config.example.yaml`
-- LLM config: `llm_config.example.yaml`
+- LLM config: `llm_config.yaml` (Groq + `GROQ_API_KEY`, or `provider: mock`)
+- Index name: `hy_model_index`
 
 ## 3) Text frontend demo (fastest)
 
 ```bash
-python frontend_demo.py --config demo_config.yaml --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --index-name multi_model_index --port 8080
+python frontend_demo.py --config validation_manifest_update_hy.yaml --runtime-config runtime_config.yaml --llm-config llm_config.yaml --index-name hy_model_index --port 8080
 ```
 
 Open `http://127.0.0.1:8080`
@@ -27,7 +28,7 @@ Open `http://127.0.0.1:8080`
 Start backend API:
 
 ```bash
-python run_runtime_api.py --config demo_config.yaml --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --host 127.0.0.1 --port 8000
+python run_runtime_api.py
 ```
 
 In a second terminal:
@@ -43,7 +44,7 @@ Open the printed Vite URL (usually `http://127.0.0.1:5173`).
 ## 4) Voice smoke demo (STT->runtime->TTS chain)
 
 ```bash
-python cli.py --config demo_config.yaml voice-smoke-test --index-name multi_model_index --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --voice-config voice_config.example.yaml
+python cli.py --config validation_manifest_update_hy.yaml voice-smoke-test --index-name hy_model_index --runtime-config runtime_config.yaml --llm-config llm_config.yaml --voice-config voice_config.example.yaml
 ```
 
 ## 5) Self-hosted LiveKit demo
@@ -59,5 +60,5 @@ python cli.py --config demo_config.yaml voice-smoke-test --index-name multi_mode
    - `LIVEKIT_TOKEN=<TOKEN>`
 5. Run:
 ```bash
-python cli.py --config demo_config.yaml voice-agent --index-name multi_model_index --runtime-config runtime_config.yaml --llm-config llm_config.example.yaml --voice-config voice_config.example.yaml
+python cli.py --config validation_manifest_update_hy.yaml voice-agent --index-name hy_model_index --runtime-config runtime_config.yaml --llm-config llm_config.yaml --voice-config voice_config.example.yaml
 ```

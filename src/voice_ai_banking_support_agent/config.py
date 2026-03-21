@@ -31,6 +31,8 @@ class ChunkingConfig:
     target_words: int = 250
     min_words: int = 80
     max_words: int = 450
+    # Number of trailing sentences carried into the next chunk for continuity (0 = none).
+    overlap_sentences: int = 1
 
     # Hard cap on the number of sections extracted from a single page (safety guard).
     max_sections_per_page: int = 50

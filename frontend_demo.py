@@ -44,12 +44,12 @@ def _render_page(answer: str, trace: list[str], query: str, index_name: str) -> 
 def main() -> None:
     p = argparse.ArgumentParser(description="One-file frontend demo for runtime QA")
     p.add_argument("--project-root", type=str, default=".")
-    p.add_argument("--config", type=str, default="validation_manifest_update_multi.yaml")
+    p.add_argument("--config", type=str, default="validation_manifest_update_hy.yaml")
     p.add_argument("--runtime-config", type=str, default="runtime_config.yaml")
-    p.add_argument("--llm-config", type=str, default=None)
+    p.add_argument("--llm-config", type=str, default="llm_config.yaml")
     p.add_argument("--host", type=str, default="127.0.0.1")
     p.add_argument("--port", type=int, default=8080)
-    p.add_argument("--index-name", type=str, default="multi_model_index")
+    p.add_argument("--index-name", type=str, default="hy_model_index")
     args = p.parse_args()
 
     project_root = Path(args.project_root).resolve()

@@ -75,8 +75,17 @@ class HTTPWhisperSTTProvider:
                 raise RuntimeError("STT returned empty transcript")
             return text
         except Exception as exc:
-            logger.exception("HTTP STT failed: %s", exc)
+            logger.warning(
+                "HTTP STT request failed (%s). Endpoint=%s — using fallback if configured.",
+                exc,
+                self.endpoint,
+            )
+            logger.debug("STT failure detail", exc_info=True)
             if self.fallback_provider is not None:
+                logger.info("STT: falling back to secondary provider (often mock / text passthrough).")
                 return self.fallback_provider.transcribe(payload)
-            raise RuntimeError("STT transcription failed and no fallback is configured.") from exc
+            raise RuntimeError(
+                "STT transcription failed and no fallback is configured. "
+                "Set VOICE_STT_ENDPOINT or enable fallback_to_mock in voice config."
+            ) from exc
 

@@ -108,10 +108,28 @@ class TopicClassifier:
                     scores[topic] += self._cfg.weak_term_weight
                     matched[topic].append(term)
 
+        any_strong_hit = False
+        for terms in self._strong_topic_terms.values():
+            for term in terms:
+                if term in lower:
+                    any_strong_hit = True
+                    break
+            if any_strong_hit:
+                break
+
         best_topic = max(scores, key=scores.get)
         best_score = scores[best_topic]
         if best_score <= 0:
             return TopicClassification(label="out_of_scope", confidence=0.8, reason="no_supported_topic_terms")
+
+        # Stricter: weak-only matches (e.g. "տոկոս" alone) must clarify topic — do not route to credit/deposit/branch.
+        if not any_strong_hit:
+            return TopicClassification(
+                label="ambiguous",
+                confidence=0.65,
+                matched_terms=matched[best_topic],
+                reason="weak_topic_signals_only_need_explicit_product",
+            )
 
         ordered = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         second_score = ordered[1][1]

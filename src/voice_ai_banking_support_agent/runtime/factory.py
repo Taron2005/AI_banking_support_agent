@@ -33,6 +33,7 @@ def build_runtime_orchestrator(
         followup_markers=runtime_settings.followup.markers,
         short_query_max_tokens=runtime_settings.followup.short_query_max_tokens,
         city_terms=runtime_settings.followup.city_terms,
+        bank_aliases=runtime_settings.bank_aliases,
     )
     evidence = EvidenceChecker(
         EvidenceConfig(
@@ -41,15 +42,16 @@ def build_runtime_orchestrator(
             branch_address_patterns=tuple(runtime_settings.evidence.branch_address_patterns),
         )
     )
-    extractive = GroundedAnswerGenerator(
-        AnswerGeneratorConfig(
-            max_evidence_chunks=runtime_settings.answer.max_evidence_chunks,
-            max_snippet_chars=runtime_settings.answer.max_snippet_chars,
-        )
+    answer_cfg = AnswerGeneratorConfig(
+        max_evidence_chunks=runtime_settings.answer.max_evidence_chunks,
+        max_snippet_chars=runtime_settings.answer.max_snippet_chars,
     )
+    extractive = GroundedAnswerGenerator(answer_cfg)
     if runtime_settings.answer.backend == "llm":
         effective_llm_client = llm_client or build_llm_client(llm_settings)
-        answer_backend = LLMAnswerGenerator(llm_client=effective_llm_client, fallback=extractive)
+        answer_backend = LLMAnswerGenerator(
+            llm_client=effective_llm_client, fallback=extractive, cfg=answer_cfg
+        )
     else:
         answer_backend = extractive
     return RuntimeOrchestrator(

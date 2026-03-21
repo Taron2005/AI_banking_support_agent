@@ -10,6 +10,16 @@ from .llm_config import LLMSettings
 
 logger = logging.getLogger(__name__)
 
+# Groq uses OpenAI-compatible /v1/chat/completions; system message enforces evidence-only answers.
+LLM_SYSTEM_ARMENIAN_EVIDENCE_ONLY = (
+    "Դու բանկային աջակցության օգնական ես։ Պատասխանիր միայն օգտատիրոջ հաղորդագրության մեջ տրված "
+    "«Ապացույցներ» բլոկից։ Մի ավելացնիր թվեր, տոկոսադրույքներ կամ փաստեր, որոնք ապացույցում չկան։ "
+    "Եթե ապացույցը բավարար չէ՝ գրիր կարճ, որ տվյալները բավարար չեն, առանց գուշակելու։ "
+    "Պատասխանիր հայերեն, ամբողջական նախադասություններով, առանց կիսատ մտքերի։"
+)
+
+GROQ_DEFAULT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+
 
 class LLMClient(Protocol):
     def generate(self, prompt: str) -> str: ...
@@ -27,29 +37,26 @@ class MockLLMClient:
 
 
 @dataclass
-class OpenAICompatibleHTTPClient:
-    """
-    OpenAI-compatible /v1/chat/completions HTTP client.
-
-    Works with self-hosted gateways exposing OpenAI-compatible API shape.
-    """
+class GroqChatClient:
+    """Groq chat via OpenAI-compatible HTTP API."""
 
     endpoint: str
     api_key: str | None
     model: str
     timeout_seconds: float
     temperature: float
+    system_message: str = LLM_SYSTEM_ARMENIAN_EVIDENCE_ONLY
 
     def generate(self, prompt: str) -> str:
         if not self.endpoint:
-            raise RuntimeError("LLM endpoint is not configured.")
+            raise RuntimeError("Groq endpoint is not configured.")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         body = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "Answer in Armenian using evidence only."},
+                {"role": "system", "content": self.system_message},
                 {"role": "user", "content": prompt},
             ],
             "temperature": self.temperature,
@@ -63,50 +70,7 @@ class OpenAICompatibleHTTPClient:
             .get("content", "")
         )
         if not isinstance(out, str) or not out.strip():
-            raise RuntimeError("LLM response content is empty.")
-        return out.strip()
-
-
-@dataclass
-class GeminiRESTClient:
-    """
-    Gemini REST API client.
-
-    Uses Google Generative Language REST endpoint with API key auth.
-    """
-
-    model: str
-    api_key: str
-    timeout_seconds: float
-    temperature: float
-    endpoint: str | None = None
-
-    def generate(self, prompt: str) -> str:
-        if not self.api_key:
-            raise RuntimeError("Gemini API key is not configured.")
-        url = self.endpoint or (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
-        )
-        body = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": self.temperature},
-        }
-        resp = requests.post(
-            url,
-            params={"key": self.api_key},
-            json=body,
-            timeout=self.timeout_seconds,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-        out = (
-            payload.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
-        )
-        if not isinstance(out, str) or not out.strip():
-            raise RuntimeError("Gemini response content is empty.")
+            raise RuntimeError("Groq response content is empty.")
         return out.strip()
 
 
@@ -115,22 +79,18 @@ def build_llm_client(settings: LLMSettings | None) -> LLMClient | None:
         return None
     if settings.provider == "mock":
         return MockLLMClient()
-    if settings.provider == "openai_compatible_http":
-        return OpenAICompatibleHTTPClient(
-            endpoint=settings.endpoint or "",
-            api_key=settings.api_key,
+    if settings.provider == "groq":
+        import os
+
+        key = settings.api_key or os.getenv("GROQ_API_KEY")
+        if not key:
+            logger.warning("Groq provider selected but no api_key or GROQ_API_KEY; LLM calls will fail.")
+        return GroqChatClient(
+            endpoint=settings.endpoint or GROQ_DEFAULT_ENDPOINT,
+            api_key=key,
             model=settings.model,
             timeout_seconds=settings.timeout_seconds,
             temperature=settings.temperature,
         )
-    if settings.provider == "gemini_rest":
-        return GeminiRESTClient(
-            model=settings.model or "gemini-2.0-flash",
-            api_key=settings.api_key or "",
-            timeout_seconds=settings.timeout_seconds,
-            temperature=settings.temperature,
-            endpoint=settings.endpoint,
-        )
-    logger.warning("Unknown LLM provider: %s", settings.provider)
+    logger.warning("Unknown LLM provider %s; expected mock or groq.", getattr(settings, "provider", None))
     return None
-

@@ -8,9 +8,10 @@ from .models import RetrievedChunk
 
 @dataclass(frozen=True)
 class AnswerGeneratorConfig:
-    max_evidence_chunks: int = 3
+    max_evidence_chunks: int = 4
     answer_language: str = "hy"
-    max_snippet_chars: int = 260
+    max_snippet_chars: int = 520
+    max_chars_per_evidence: int = 560
 
 
 class AnswerBackend(Protocol):
@@ -21,7 +22,7 @@ class GroundedAnswerGenerator:
     """
     Lightweight grounded answer generator.
 
-    This is intentionally extractive and deterministic for production safety.
+    Deterministic extractive fallback when Groq is unavailable or declines.
     """
 
     def __init__(self, cfg: AnswerGeneratorConfig | None = None) -> None:
@@ -45,43 +46,72 @@ class GroundedAnswerGenerator:
         return "\n".join(lines)
 
 
+def _trim_evidence_text(text: str, limit: int) -> str:
+    t = text.replace("\r", " ").replace("\n", " ").strip()
+    if len(t) <= limit:
+        return t
+    return t[: limit].rsplit(" ", 1)[0].strip() + "…"
+
+
 class LLMAnswerGenerator:
     """
-    Optional LLM backend that remains grounded by construction.
-
-    It receives only query/topic/retrieved chunks from post-evidence stage.
+    Groq-backed answer synthesis using only post-evidence chunks (grounded by construction).
     """
 
-    def __init__(self, llm_client: object | None, fallback: GroundedAnswerGenerator) -> None:
+    def __init__(
+        self,
+        llm_client: object | None,
+        fallback: GroundedAnswerGenerator,
+        cfg: AnswerGeneratorConfig | None = None,
+    ) -> None:
         self._llm_client = llm_client
         self._fallback = fallback
+        self._cfg = cfg or AnswerGeneratorConfig()
 
     def generate(self, query: str, topic: str, chunks: list[RetrievedChunk], bank: str | None) -> str:
         if self._llm_client is None:
             return self._fallback.generate(query, topic, chunks, bank)
-        # Provider-agnostic placeholder; if client exists it should expose `.generate(prompt)`.
-        evidence_lines = []
-        for c in chunks[:4]:
-            evidence_lines.append(
-                f"[{c.chunk.bank_name} | {c.chunk.topic} | {c.chunk.source_url}] {c.chunk.cleaned_text[:320]}"
+        if not chunks:
+            return self._fallback.generate(query, topic, chunks, bank)
+
+        max_n = self._cfg.max_evidence_chunks
+        lim = self._cfg.max_chars_per_evidence
+        evidence_blocks: list[str] = []
+        for i, c in enumerate(chunks[:max_n], start=1):
+            body = _trim_evidence_text(c.chunk.cleaned_text, lim)
+            if not body:
+                continue
+            evidence_blocks.append(
+                f"[{i}] Բանկ՝ {c.chunk.bank_name} | Թեմա՝ {c.chunk.topic} | URL՝ {c.chunk.source_url}\n{body}"
             )
+        if not evidence_blocks:
+            return self._fallback.generate(query, topic, chunks, bank)
+
+        bank_line = f"Ընտրած բանկի ֆիլտր՝ {bank}։" if bank else "Բանկի ֆիլտր՝ բոլորը (ըստ հարցման)։"
         prompt = (
-            "Պատասխանիր միայն տրված ապացույցներով, հայերեն, կարճ ու հստակ։ "
-            "Եթե ապացույցը թերի է՝ նշիր դա։\n"
-            f"Հարց: {query}\nԹեմա: {topic}\nԱպացույցներ:\n" + "\n".join(evidence_lines)
+            "Օգտագործիր միայն ստորև թվարկված ապացույցները։ Մի միանվագ ավելացնիր տոկոսադրույքներ, "
+            "գներ, հասցեներ կամ պայմաններ, որոնք ապացույցների տեքստում չեն նշված։\n"
+            "Եթե ապացույցները չեն պատասխանում հարցին կամ թերի են՝ գրիր 1–2 նախադասությամբ, որ տվյալները բավարար չեն։\n"
+            "Պատասխանիր հայերեն, ամբողջական նախադասություններով, առանց կրկնելու աղբյուրի ներածականները։\n\n"
+            f"{bank_line}\n"
+            f"Օգտատիրոջ հարցը՝ {query}\n"
+            f"Թեմա՝ {topic}\n\n"
+            "Ապացույցներ՝\n"
+            + "\n\n".join(evidence_blocks)
         )
         try:
             fn = getattr(self._llm_client, "generate")
             out = fn(prompt)
             if isinstance(out, str) and out.strip():
                 candidate = out.strip()
-                # Keep voice/runtime stable on broken long/noisy outputs.
-                if len(candidate) > 3500:
+                if len(candidate) < 12:
                     return self._fallback.generate(query, topic, chunks, bank)
-                if "ignore previous" in candidate.lower():
+                if len(candidate) > 4000:
+                    return self._fallback.generate(query, topic, chunks, bank)
+                low = candidate.lower()
+                if "ignore previous" in low or "system prompt" in low:
                     return self._fallback.generate(query, topic, chunks, bank)
                 return candidate
         except Exception:
             return self._fallback.generate(query, topic, chunks, bank)
         return self._fallback.generate(query, topic, chunks, bank)
-
