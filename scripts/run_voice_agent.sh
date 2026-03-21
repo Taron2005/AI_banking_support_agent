@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Canonical voice-agent CLI and stack order: README §7b / §9.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [[ ! -f .venv/bin/python ]]; then
@@ -21,7 +22,7 @@ if [[ ! -f "$VC" ]]; then
   VC="voice_config.example.yaml"
 fi
 source .venv/bin/activate
-exec python cli.py --config validation_manifest_update_hy.yaml voice-agent \
+exec python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml voice-agent \
   --index-name hy_model_index \
   --runtime-config runtime_config.yaml \
   --llm-config llm_config.yaml \

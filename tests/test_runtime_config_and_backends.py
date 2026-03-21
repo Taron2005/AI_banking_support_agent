@@ -40,6 +40,6 @@ def test_runtime_config_loader_yaml(tmp_path: Path) -> None:
 def test_llm_backend_falls_back_when_no_client() -> None:
     fallback = GroundedAnswerGenerator()
     llm = LLMAnswerGenerator(llm_client=None, fallback=fallback)
-    out = llm.generate("Ի՞նչ ավանդներ կան", "deposit", [_chunk()], "acba")
-    assert "Հիմնական տվյալներ" in out
+    out = llm.generate("Ի՞նչ ավանդներ կան", "deposit", [_chunk()], frozenset({"acba"}))
+    assert "պաշտոնական" in out or "նիշքած" in out or "ամփոփում" in out
 

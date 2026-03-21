@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 from ..bank_manifest import load_banks_manifest
 from ..config import AppConfig
-from ..scrapers.base import RequestsHTMLFetcher, extract_same_domain_links
+from ..scrapers.base import RequestsHTMLFetcher, extract_same_domain_links, normalize_seed_url
 from ..utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,14 @@ def discover_urls(
         if wanted and bank.bank_key.lower() not in wanted:
             continue
 
-        seeds = list({*bank.credits.urls, *bank.deposits.urls, *bank.branches.urls})
+        raw_seeds = {*bank.credits.urls, *bank.deposits.urls, *bank.branches.urls}
+        seeds: list[str] = []
+        seen_seed: set[str] = set()
+        for u in raw_seeds:
+            nu = normalize_seed_url(u.strip())
+            if nu not in seen_seed:
+                seen_seed.add(nu)
+                seeds.append(nu)
         if not seeds:
             logger.warning("No seed URLs for bank=%s", bank.bank_key)
             continue
@@ -110,6 +117,7 @@ def discover_urls(
             rows.append(
                 {
                     "url": normalized,
+                    "final_url": result.final_url,
                     "depth": depth,
                     "parent_url": parent,
                     "http_status": result.status_code,
@@ -123,6 +131,7 @@ def discover_urls(
                 continue
 
             for child in extract_same_domain_links(result.html, normalized):
+                child = normalize_seed_url(child)
                 if urlparse(child).netloc != root_domain:
                     continue
                 if child in visited:

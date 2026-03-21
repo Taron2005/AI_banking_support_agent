@@ -12,12 +12,16 @@ livekit:
   room_name: "banking-support-room"
   agent_identity: "banking-support-agent"
   participant_identity_prefix: "user"
+  # LIVEKIT_TOKEN in .env is optional if api_key/api_secret match the LiveKit server (agent auto-mints JWT).
 
 stt:
   provider: "http_whisper"
   language: "hy"
+  # Prefer .env VOICE_STT_ENDPOINT; or set here if .env is not loaded:
+  # endpoint: "http://127.0.0.1:8088/transcribe"
   endpoint: null
-  timeout_seconds: 45
+  # Local Whisper is often slow (first load / CPU): 180s avoids read timeout → mock → failed voice turn.
+  timeout_seconds: 180
   multipart_field: "file"
   upload_filename: "audio.wav"
   api_key: null
@@ -31,6 +35,8 @@ tts:
   # scripts/voice_http_tts_server.py maps "default" → hy-AM-AnahitNeural (edge-tts)
   voice_name: "default"
   output_encoding: "wav"
+  # Prefer .env VOICE_TTS_ENDPOINT; or uncomment:
+  # endpoint: "http://127.0.0.1:8089/synthesize"
   endpoint: null
   timeout_seconds: 60
   api_key: null
@@ -41,4 +47,4 @@ tts:
 behavior:
   debug: false
   verbose_trace: false
-  max_response_chars: 1800
+  max_response_chars: 4000

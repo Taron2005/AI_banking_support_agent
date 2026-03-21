@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Room, RoomEvent, createLocalAudioTrack } from "livekit-client";
+import { MessageContent } from "./MessageContent.jsx";
 
 const VOICE_DISCONNECTED = "disconnected";
 const VOICE_IDLE = "idle";
@@ -20,7 +21,7 @@ function voicePhaseLabel(phase, detail, recordSeconds) {
     }
     case VOICE_PROCESSING:
       if (detail === "transcribing") return "Recognizing speech…";
-      if (detail === "answering") return "Preparing answer (Groq + evidence)…";
+      if (detail === "answering") return "Preparing answer (Gemini + evidence)…";
       return "Processing…";
     case VOICE_SPEAKING:
       return "Assistant speaking…";
@@ -43,6 +44,12 @@ function normalizeLivekitWsUrl(url) {
   if (lower.startsWith("https://")) return `wss://${u.slice(8)}`;
   if (lower.startsWith("http://")) return `ws://${u.slice(7)}`;
   return u;
+}
+
+/** Align with server voice_config: self-hosted only, no LiveKit Cloud. */
+function isRejectedLiveKitCloudUrl(url) {
+  const u = (url || "").toLowerCase();
+  return u.includes("livekit.cloud") || u.includes("cloud.livekit.io");
 }
 
 function voicePillClass(phase, connected) {
@@ -133,9 +140,17 @@ export default function App() {
   const apiPillClass = apiOk === null ? "pill pill-neutral" : apiOk ? "pill pill-ok" : "pill pill-off";
   const apiLabel = apiOk === null ? "API" : apiOk ? "API online" : "API offline";
 
-  const groqPillClass =
-    !ready || ready.groq_configured ? "pill pill-ok" : "pill pill-warn";
-  const groqLabel = !ready ? "" : ready.groq_configured ? "Groq ready" : "Groq key missing";
+  const llmOk =
+    ready &&
+    (ready.llm_configured === true || ready.llm_provider === "mock");
+  const llmPillClass = !ready || llmOk ? "pill pill-ok" : "pill pill-warn";
+  const llmLabel = !ready
+    ? ""
+    : ready.llm_provider === "mock"
+      ? "LLM mock"
+      : llmOk
+        ? `Gemini OK (${ready.llm_model || ready.llm_provider || "?"})`
+        : "Gemini key missing";
 
   async function sendMessage(e) {
     e?.preventDefault();
@@ -179,6 +194,8 @@ export default function App() {
           sources: data.used_sources || [],
           trace: data.decision_trace || [],
           refusal: data.refusal_reason,
+          answerSynthesis: data.answer_synthesis || null,
+          llmError: data.llm_error || null,
           ms,
           t: Date.now(),
         },
@@ -286,7 +303,17 @@ export default function App() {
               setVoiceProcessingDetail("");
             } else if (st === "error") {
               setVoicePhase(VOICE_ERROR);
-              setVoiceDetail(String(j.detail || "unknown_error"));
+              const d = String(j.detail || "unknown_error");
+              const errHy = {
+                stt_service_missing:
+                  "STT չի կապված։ Գործարկեք voice_http_stt_server (պորտ 8088) և VOICE_STT_ENDPOINT .env-ում։",
+                stt_failed: "STT սերվերի սխալ։ Ստուգեք voice agent լոգը։",
+                stt_empty: "Խոսքը չճանաչվեց — կրկնեք ավելի հստակ։",
+                tts_failed: "Ձայնային պատասխանի սինթեզը ձախողվեց։ Ստուգեք VOICE_TTS_ENDPOINT։",
+                tts_playout_failed: "Ձայնի նվագարկումը ձախողվեց։",
+                processing_failed: "Մշակման սխալ (RAG/Gemini)։ Ստուգեք voice agent լոգը։",
+              };
+              setVoiceDetail(errHy[d] || d);
               setVoiceProcessingDetail("");
             } else if (st === "busy") {
               setVoiceLog((p) => [...p, "Server busy — wait for assistant audio to finish."]);
@@ -326,6 +353,8 @@ export default function App() {
                   sources: [],
                   trace: body.decision_trace || [],
                   refusal: body.refusal_reason,
+                  answerSynthesis: body.answer_synthesis || null,
+                  llmError: body.llm_error || null,
                   t: Date.now(),
                   viaVoice: true,
                 },
@@ -378,10 +407,15 @@ export default function App() {
     setVoiceDetail("");
     try {
       const enc = new TextEncoder();
-      await room.localParticipant.publishData(enc.encode(JSON.stringify({ type: "start" })), {
-        reliable: true,
-        topic: "voice.ptt",
-      });
+      await room.localParticipant.publishData(
+        enc.encode(
+          JSON.stringify({ type: "start", participant_identity: room.localParticipant.identity }),
+        ),
+        {
+          reliable: true,
+          topic: "voice.ptt",
+        },
+      );
       let track = micTrackRef.current;
       if (!track) {
         track = await createLocalAudioTrack({
@@ -405,11 +439,16 @@ export default function App() {
     setVoicePhase(VOICE_PROCESSING);
     try {
       const enc = new TextEncoder();
-      await room.localParticipant.publishData(enc.encode(JSON.stringify({ type: "end" })), {
-        reliable: true,
-        topic: "voice.ptt",
-      });
-      await new Promise((r) => setTimeout(r, 150));
+      await room.localParticipant.publishData(
+        enc.encode(
+          JSON.stringify({ type: "end", participant_identity: room.localParticipant.identity }),
+        ),
+        {
+          reliable: true,
+          topic: "voice.ptt",
+        },
+      );
+      await new Promise((r) => setTimeout(r, 220));
       const track = micTrackRef.current;
       if (track) await room.localParticipant.unpublishTrack(track);
     } catch (e) {
@@ -471,12 +510,12 @@ export default function App() {
         <div>
           <div className="app-brand-title">Բանկային աջակցություն</div>
           <div className="app-brand-sub">
-            Հայերեն RAG · hy_model_index · Groq · push-to-talk voice
+            Հայերեն RAG · hy_model_index · Gemini · push-to-talk voice
           </div>
         </div>
         <div className="pill-row">
           <span className={apiPillClass}>{apiLabel}</span>
-          {ready ? <span className={groqPillClass}>{groqLabel}</span> : null}
+          {ready ? <span className={llmPillClass}>{llmLabel}</span> : null}
           <span className={voicePillClass(voicePhase, lkConnected)} title={voiceDetail || undefined}>
             {voiceStatusLine}
           </span>
@@ -567,7 +606,7 @@ export default function App() {
                 <strong>Stop & send</strong>։ Ձեր խոսքը STT-ից հետո կհայտնվի զրույցում՝ <span className="voice-badge">STT</span>{" "}
                 նշանով, ապա՝ պատասխանը։
               </li>
-              <li>Պատասխանները հիմնված են միայն բանկերի պաշտոնական տվյալների վրա (Groq + hy_model_index)։</li>
+              <li>Պատասխանները հիմնված են միայն բանկերի պաշտոնական տվյալների վրա (hy_model_index + Gemini)։</li>
             </ol>
           </div>
         ) : null}
@@ -584,12 +623,24 @@ export default function App() {
             </div>
           ) : (
             <div key={`a-${i}-${m.t}`} className="bubble-assistant">
-              {m.content}
+              <MessageContent text={m.content} />
               {m.status && m.status !== "error" ? (
                 <div className="bubble-meta">
                   {m.status}
                   {m.ms != null ? ` · ${m.ms} ms` : null}
                   {m.refusal ? ` · ${m.refusal}` : null}
+                  {m.answerSynthesis === "llm"
+                    ? " · AI synthesis (Gemini)"
+                    : m.answerSynthesis === "extractive_fallback"
+                      ? " · fallback (no LLM)"
+                      : m.answerSynthesis === "extractive_only"
+                        ? " · extractive mode"
+                        : null}
+                </div>
+              ) : null}
+              {m.llmError && verbose ? (
+                <div className="bubble-meta" style={{ color: "var(--warn, #c9a227)" }}>
+                  LLM: {m.llmError}
                 </div>
               ) : null}
               {m.sources && m.sources.length > 0 ? (

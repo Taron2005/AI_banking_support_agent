@@ -1,13 +1,14 @@
-# LLM: Groq only (OpenAI-compatible chat completions).
-# Runtime uses this when runtime_config.yaml has answer.backend: llm.
+# Google Gemini — active LLM for grounded Armenian answers (runtime_config answer.backend: llm).
 #
-# Set GROQ_API_KEY in .env (recommended) or paste below for local dev only.
+# Set GEMINI_API_KEY in .env (https://aistudio.google.com/apikey). GOOGLE_API_KEY or LLM_API_KEY also work.
+# Override model: LLM_MODEL=gemini-1.5-pro (higher quality, slower) or gemini-2.0-flash (default).
 #
-# Fast default on Groq: llama-3.1-8b-instant
+# CI / offline: LLM_PROVIDER=mock in .env or provider: mock below.
 
-provider: groq
+provider: gemini
 endpoint: null
 api_key: null
-model: llama-3.1-8b-instant
-timeout_seconds: 20
-temperature: 0.1
+model: gemini-2.0-flash
+timeout_seconds: 120
+temperature: 0.06
+max_tokens: 8192

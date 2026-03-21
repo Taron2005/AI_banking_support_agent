@@ -23,7 +23,7 @@ def _chunk(text: str, topic: str = "branch") -> RetrievedChunk:
 
 
 def test_refusal_messages_available() -> None:
-    assert "Կներեք" in refusal_message("out_of_scope")
+    assert "վարկ" in refusal_message("out_of_scope")
 
 
 def test_evidence_checker_branch_address_requirement() -> None:

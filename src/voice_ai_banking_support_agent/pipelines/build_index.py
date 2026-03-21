@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from collections import Counter
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 
@@ -58,13 +58,15 @@ def build_index(
     index_dir.mkdir(parents=True, exist_ok=True)
 
     all_docs: list[DocumentMetadata] = []
+    chunks_per_file: dict[str, int] = {}
 
     # Read chunk artifacts for the selected banks/topics.
     chunk_dir = config.chunks_dir
     if not chunk_dir.exists():
         raise FileNotFoundError(f"Chunks directory does not exist: {chunk_dir}")
 
-    for file in chunk_dir.glob("*_chunks.jsonl"):
+    chunk_files = sorted(chunk_dir.glob("*_chunks.jsonl"))
+    for file in chunk_files:
         # Filename: {bank_key}_{topic}_chunks.jsonl
         name = file.name
         if not name.endswith("_chunks.jsonl"):
@@ -80,7 +82,10 @@ def build_index(
         if topic not in topics:
             continue
 
-        all_docs.extend(_read_chunk_jsonl(file))
+        rows = _read_chunk_jsonl(file)
+        rel = str(file.relative_to(chunk_dir))
+        chunks_per_file[rel] = len(rows)
+        all_docs.extend(rows)
 
     if not all_docs:
         raise ValueError("No chunk documents found for the selected banks/topics.")
@@ -91,6 +96,38 @@ def build_index(
     if len(deduped) != len(all_docs):
         logger.info("Dropped duplicate chunks before embedding: %d -> %d", len(all_docs), len(deduped))
     all_docs = list(deduped.values())
+
+    # Stable row order: FAISS ids must align with metadata.jsonl across machines and rebuilds.
+    all_docs.sort(
+        key=lambda d: (
+            (d.bank_key or "").lower(),
+            (d.topic or "").lower(),
+            (d.source_url or "").lower(),
+            (d.chunk_id or "").lower(),
+        )
+    )
+
+    by_bank_topic = Counter((d.bank_key, d.topic) for d in all_docs)
+    banks_present = sorted({d.bank_key for d in all_docs if d.bank_key})
+    topics_present = sorted({d.topic for d in all_docs if d.topic})
+    logger.info(
+        "Chunk corpus: total=%d banks=%s topics=%s by_bank_topic=%s",
+        len(all_docs),
+        banks_present,
+        topics_present,
+        {f"{b}/{t}": n for (b, t), n in sorted(by_bank_topic.items())},
+    )
+    for rel, n in sorted(chunks_per_file.items()):
+        logger.info("  %s: %d rows", rel, n)
+
+    if selected_banks:
+        found_banks = {bk.lower() for bk in banks_present}
+        for want in selected_banks:
+            if want not in found_banks:
+                logger.warning(
+                    "No chunks found for bank_key=%r in this build (check scrape/chunks for that bank).",
+                    want,
+                )
 
     logger.info("Embedding %d chunk documents...", len(all_docs))
     embedder = EmbeddingModel(
@@ -109,12 +146,33 @@ def build_index(
             + str(e)
         ) from e
 
+    emb_dim = int(embeddings.shape[1])
+    if emb_dim <= 0:
+        raise ValueError("Embedding dimension must be positive.")
+
+    extra_index_info: dict[str, object] = {
+        "banks_present": banks_present,
+        "topics_present": topics_present,
+        "chunks_by_bank_topic": {f"{b}/{t}": n for (b, t), n in sorted(by_bank_topic.items())},
+        "chunk_source_files": chunks_per_file,
+    }
+
     # Persist FAISS + metadata mapping.
     FaissVectorStore.build_and_save(
         embeddings=embeddings,
         docs=all_docs,
         index_dir=index_dir,
         index_name=index_name,
+        embedding_model_name=config.embedding_model_name,
+        extra_index_info=extra_index_info,
+    )
+
+    logger.info(
+        "Index written to %s (vectors=%d dim=%d model=%r)",
+        index_dir,
+        len(all_docs),
+        emb_dim,
+        config.embedding_model_name,
     )
 
 

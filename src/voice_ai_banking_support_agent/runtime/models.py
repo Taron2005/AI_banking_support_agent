@@ -12,6 +12,7 @@ RefusalReason = Literal[
     "out_of_scope",
     "unsupported_request_type",
     "insufficient_evidence",
+    "comparison_insufficient",
     "prompt_injection",
     "ambiguous",
 ]
@@ -48,9 +49,16 @@ class EvidenceDecision(BaseModel):
 class RuntimeResponse(BaseModel):
     answer_text: str
     status: RuntimeStatus
+    # How the answer was produced: llm | extractive_fallback | extractive_only (backend=extractive).
+    answer_synthesis: str | None = None
+    # When answer_synthesis=extractive_fallback, short reason (e.g. HTTPError, empty response).
+    llm_error: str | None = None
     refusal_reason: RefusalReason | None = None
     detected_topic: RuntimeTopic | None = None
+    # Single-bank shortcut for clients; None when zero or multiple banks apply.
     detected_bank: str | None = None
+    # Populated whenever bank allowlist is non-empty (one or more keys).
+    detected_banks: list[str] = Field(default_factory=list)
     used_sources: list[str] = Field(default_factory=list)
     retrieved_chunks_summary: list[str] = Field(default_factory=list)
     state_updates: dict[str, str] = Field(default_factory=dict)
@@ -62,6 +70,8 @@ class SessionState:
     session_id: str
     last_topic: TopicLabel | None = None
     last_bank: str | None = None
+    # Last explicit bank allowlist (e.g. comparison); used for "the other bank" style follow-ups.
+    last_bank_keys: list[str] = field(default_factory=list)
     last_city: str | None = None
     last_product: str | None = None
     last_entities_mentioned: list[str] = field(default_factory=list)

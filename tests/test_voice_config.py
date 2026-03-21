@@ -48,6 +48,22 @@ def test_voice_config_allows_http_providers_without_endpoint(tmp_path: Path) -> 
     assert not cfg.stt.endpoint
 
 
+def test_voice_config_stt_timeout_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOICE_STT_TIMEOUT_SECONDS", "240")
+    p = tmp_path / "voice.yaml"
+    p.write_text("livekit:\n  url: ws://127.0.0.1:7880\n", encoding="utf-8")
+    cfg = load_voice_config(p)
+    assert cfg.stt.timeout_seconds == 240.0
+
+
+def test_voice_config_tts_timeout_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOICE_TTS_TIMEOUT_SECONDS", "90")
+    p = tmp_path / "voice.yaml"
+    p.write_text("livekit:\n  url: ws://127.0.0.1:7880\n", encoding="utf-8")
+    cfg = load_voice_config(p)
+    assert cfg.tts.timeout_seconds == 90.0
+
+
 def test_voice_config_force_mock_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOICE_USE_MOCK", "1")
     p = tmp_path / "voice.yaml"

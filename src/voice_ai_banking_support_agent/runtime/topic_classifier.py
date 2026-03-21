@@ -54,8 +54,8 @@ class TopicClassifier:
         ),
     }
     _weak_topic_terms: dict[str, tuple[str, ...]] = {
-        "credit": ("interest rate", "տոկոս", "monthly"),
-        "deposit": ("interest", "rate", "dollar", "dram", "currency", "cumulative deposit", "տոկոս"),
+        "credit": ("interest rate", "տոկոս", "տոկոսադրույք", "monthly"),
+        "deposit": ("interest", "rate", "dollar", "dram", "currency", "cumulative deposit", "տոկոս", "տոկոսադրույք"),
         "branch": ("gyumri", "yerevan", "vanadzor", "քաղաք", "city"),
     }
 

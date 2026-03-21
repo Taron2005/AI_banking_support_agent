@@ -42,12 +42,12 @@ python cli.py --config validation_manifest_update_hy.yaml voice-smoke-test --ind
 3. `lk token create --api-key <KEY> --api-secret <SECRET> --join --room banking-support-room --identity banking-support-agent`
 4. Set env vars and run `voice-agent`.
 
-## G. Real STT/TTS and Groq
+## G. Real STT/TTS and Gemini
 
 Edit:
 - `voice_config.example.yaml` (`http_whisper`, `http_tts` endpoints)
-- `llm_config.yaml` — `provider: groq`, set `GROQ_API_KEY` in `.env`
+- `llm_config.yaml` — `provider: gemini`, set `GEMINI_API_KEY` in `.env`
 
 If providers fail:
 - voice providers can fallback to mock (config flags),
-- Groq errors fall back to extractive answers.
+- Gemini errors fall back to extractive answers (logged, with `llm_error`).

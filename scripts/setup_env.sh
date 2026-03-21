@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Canonical install lines: README §7 step 2 / §7b step 2 (requirements + editable dev + voice).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m venv .venv

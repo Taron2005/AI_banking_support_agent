@@ -31,7 +31,17 @@ def _prune_soup_for_sections(soup: BeautifulSoup, rules: BankExtractionRules | N
     for tag in soup.find_all(["script", "style", "noscript", "nav", "header", "footer", "aside"]):
         tag.decompose()
 
-    noise_markers = {"menu", "breadcrumb", "cookies", "cookie", "footer", "header", "social"}
+    noise_markers = {
+        "menu",
+        "breadcrumb",
+        "cookies",
+        "cookie",
+        "footer",
+        "header",
+        "social",
+        "banner",
+        "contentinfo",
+    }
     for el in soup.find_all(True):
         attrs_dict = el.attrs or {}
         cls_val = attrs_dict.get("class", "")

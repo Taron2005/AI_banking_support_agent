@@ -19,8 +19,8 @@ build/
 .coverage
 htmlcov/
 
-# Node (React demo)
-frontend-react/node_modules/
+# Node (React demo) — never commit; run `npm install` in frontend-react/ after clone
+node_modules/
 frontend-react/dist/
 frontend-react/.env
 frontend-react/.env.local

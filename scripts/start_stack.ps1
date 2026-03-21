@@ -4,7 +4,8 @@ param(
   [switch]$ClearPorts
 )
 <#
-  Starts the full local stack: Docker LiveKit, FastAPI (:8000), voice agent, Vite (:5173).
+  Full-stack shortcut (Windows). Canonical manual pipeline: README §7b / §7c.
+  Starts: Docker LiveKit, FastAPI (:8000), voice agent, Vite (:5173). Does not start sample STT/TTS.
   Run from repo root:  powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1
   Fresh start:         powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1 -ClearPorts
   Or double-click: START_STACK.bat
@@ -53,7 +54,7 @@ $py = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) {
   Write-Host "ERROR: No .venv found. Run first:" -ForegroundColor Red
   Write-Host "  scripts\setup_env.bat" -ForegroundColor Yellow
-  Write-Host "Then copy .env.example to .env and set GROQ_API_KEY (optional but recommended)." -ForegroundColor Yellow
+  Write-Host "Then copy .env.example to .env and set GEMINI_API_KEY (optional but recommended)." -ForegroundColor Yellow
   exit 1
 }
 

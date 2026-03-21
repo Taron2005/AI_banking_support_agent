@@ -25,6 +25,14 @@ def _count_words(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
+def _list_heavy_text(text: str) -> bool:
+    lines = [ln.strip() for ln in text.replace("\r", "\n").split("\n") if ln.strip()]
+    if len(lines) < 6:
+        return False
+    short = sum(1 for ln in lines if len(ln) < 48)
+    return short / len(lines) >= 0.55
+
+
 def chunk_sections(
     *,
     sections: list[Section],
@@ -54,6 +62,10 @@ def chunk_sections(
         sentences = _split_into_sentences(section.content_text)
         if not sentences:
             continue
+
+        target_words = (
+            int(chunking.target_words * 1.32) if _list_heavy_text(section.content_text) else chunking.target_words
+        )
 
         current_sentences: list[str] = []
         current_words = 0
@@ -100,8 +112,8 @@ def chunk_sections(
 
             if sent_words > chunking.max_words:
                 words = re.findall(r"\S+", sent)
-                for i in range(0, len(words), chunking.target_words):
-                    part = " ".join(words[i : i + chunking.target_words])
+                for i in range(0, len(words), target_words):
+                    part = " ".join(words[i : i + target_words])
                     current_sentences = [part]
                     current_words = _count_words(part)
                     flush(force=True)
@@ -110,7 +122,7 @@ def chunk_sections(
             current_sentences.append(sent)
             current_words += sent_words
 
-            if current_words >= chunking.target_words:
+            if current_words >= target_words:
                 flush(force=False)
 
         if current_sentences:

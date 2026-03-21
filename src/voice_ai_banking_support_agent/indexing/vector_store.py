@@ -76,6 +76,8 @@ class FaissVectorStore:
         docs: list[DocumentMetadata],
         index_dir: Path,
         index_name: str,
+        embedding_model_name: str | None = None,
+        extra_index_info: dict[str, object] | None = None,
     ) -> Path:
         """
         Build a FAISS index and persist it to disk.
@@ -111,15 +113,36 @@ class FaissVectorStore:
         tmp_index_path.replace(index_path)
         tmp_metadata_path.replace(metadata_path)
 
-        index_info = {
+        index_info: dict[str, object] = {
             "index_name": index_name,
             "embedding_dim": dim,
             "vector_count": len(docs),
         }
+        if embedding_model_name:
+            index_info["embedding_model_name"] = embedding_model_name
+        if extra_index_info:
+            reserved = {"index_name", "embedding_dim", "vector_count", "embedding_model_name"}
+            for k, v in extra_index_info.items():
+                if k in reserved:
+                    logger.warning("extra_index_info skips reserved key %r", k)
+                    continue
+                index_info[k] = v
         (index_dir / "index_info.json").write_text(
             json.dumps(index_info, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         return index_path
+
+    @staticmethod
+    def _doc_matches_bank_keys(doc: DocumentMetadata, bank_keys: frozenset[str]) -> bool:
+        bk = (doc.bank_key or "").strip().lower()
+        bn = (doc.bank_name or "").strip().lower()
+        for raw in bank_keys:
+            want = raw.strip().lower()
+            if not want:
+                continue
+            if want == bk or want == bn:
+                return True
+        return False
 
     def search(
         self,
@@ -127,7 +150,7 @@ class FaissVectorStore:
         query_embedding: np.ndarray,
         top_k: int,
         topic_filter: TopicLabel | None = None,
-        bank_filter: str | None = None,
+        bank_keys: frozenset[str] | None = None,
     ) -> list[RetrievalResult]:
         """
         Search vectors and return top hits.
@@ -151,8 +174,8 @@ class FaissVectorStore:
                 "Rebuild index to restore consistency."
             )
 
-        # Fetch extra candidates to compensate for metadata filtering (topic/bank).
-        candidates = max(top_k * 8, top_k)
+        # Fetch extra candidates to compensate for metadata filtering (topic/bank) and post-ranking.
+        candidates = max(top_k * 20, top_k, 48)
         scores, ids = index.search(query_embedding, candidates)
 
         results: list[RetrievalResult] = []
@@ -163,9 +186,8 @@ class FaissVectorStore:
 
             if topic_filter is not None and doc.topic != topic_filter:
                 continue
-            if bank_filter is not None:
-                bank_filter_lower = bank_filter.lower()
-                if doc.bank_name.lower() != bank_filter_lower and doc.bank_key.lower() != bank_filter_lower:
+            if bank_keys is not None and len(bank_keys) > 0:
+                if not self._doc_matches_bank_keys(doc, bank_keys):
                     continue
 
             results.append(RetrievalResult(score=float(score), doc=doc))

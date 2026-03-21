@@ -12,7 +12,7 @@ pip install -e ".[dev,voice]"
 - App config: `validation_manifest_update_hy.yaml`
 - Runtime config: `runtime_config.yaml`
 - Voice config: `voice_config.example.yaml`
-- LLM config: `llm_config.yaml` (Groq + `GROQ_API_KEY`, or `provider: mock`)
+- LLM config: `llm_config.yaml` (Gemini + `GEMINI_API_KEY`, or `provider: mock`)
 - Index name: `hy_model_index`
 
 ## 3) Text frontend demo (fastest)

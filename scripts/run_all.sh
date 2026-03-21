@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Full-stack shortcut. Canonical manual order (incl. optional STT/TTS): README §7b / §7c.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -23,7 +24,7 @@ sleep 6
 echo "[3/4] Voice agent (background; JWT from API)..."
 export LIVEKIT_TOKEN
 LIVEKIT_TOKEN="$(curl -fsS "http://127.0.0.1:8000/api/livekit/token?identity=banking-support-agent" | python -c "import sys,json; print(json.load(sys.stdin)['token'])")"
-python cli.py --config validation_manifest_update_hy.yaml voice-agent \
+python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml voice-agent \
   --index-name hy_model_index \
   --runtime-config runtime_config.yaml \
   --llm-config llm_config.yaml \

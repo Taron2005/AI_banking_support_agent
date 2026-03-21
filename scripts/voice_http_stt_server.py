@@ -13,14 +13,14 @@ Run (from repo root, after deps):
 Then in .env:
   VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe
 """
-from __future__ import annotations
-
 import argparse
 import io
 import logging
 import wave
 
 import numpy as np
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import JSONResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -67,8 +67,6 @@ def main() -> None:
             "Optional GPU: pip install faster-whisper and use --device cuda --compute-type float16"
         ) from e
 
-    from fastapi import FastAPI, File, Form, UploadFile
-    from fastapi.responses import JSONResponse
     import uvicorn
 
     logger.info("Loading Whisper model=%s device=%s …", args.model, args.device)

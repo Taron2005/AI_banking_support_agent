@@ -20,7 +20,7 @@ def build_runtime_orchestrator(
     llm_client: object | None = None,
     llm_settings: LLMSettings | None = None,
 ) -> RuntimeOrchestrator:
-    retriever = RuntimeRetriever(app_config)
+    retriever = RuntimeRetriever(app_config, runtime_settings.retrieval)
     topic_classifier = TopicClassifier(
         TopicClassifierConfig(
             ambiguous_margin=runtime_settings.topic_classifier.ambiguous_margin,
@@ -45,6 +45,7 @@ def build_runtime_orchestrator(
     answer_cfg = AnswerGeneratorConfig(
         max_evidence_chunks=runtime_settings.answer.max_evidence_chunks,
         max_snippet_chars=runtime_settings.answer.max_snippet_chars,
+        max_chars_per_evidence=runtime_settings.answer.max_chars_per_evidence,
     )
     extractive = GroundedAnswerGenerator(answer_cfg)
     if runtime_settings.answer.backend == "llm":
@@ -62,5 +63,8 @@ def build_runtime_orchestrator(
         evidence_checker=evidence,
         answer_generator=answer_backend,
         default_top_k=runtime_settings.retrieval.default_top_k,
+        max_evidence_chunks=runtime_settings.answer.max_evidence_chunks,
+        orchestration=runtime_settings.orchestration,
+        bank_aliases=runtime_settings.bank_aliases,
     )
 

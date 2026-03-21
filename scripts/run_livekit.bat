@@ -1,5 +1,5 @@
 @echo off
-REM Start self-hosted LiveKit in Docker (dev mode: devkey / secret).
+REM Start self-hosted LiveKit in Docker (dev mode: devkey / secret). Canonical: README §7b step 6 / §5.
 cd /d "%~dp0.."
 echo Starting LiveKit on ws://127.0.0.1:7880 ...
 docker compose up -d

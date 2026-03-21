@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Canonical LiveKit: README §7b step 6 / §5.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 echo "Starting LiveKit on ws://127.0.0.1:7880 ..."

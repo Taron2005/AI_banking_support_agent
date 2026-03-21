@@ -21,7 +21,7 @@ followup:
 
 evidence:
   min_chunks: 1
-  min_top_score: 0.2
+  min_top_score: 0.12
   branch_address_patterns:
     - "հասցե"
     - "address"
@@ -30,14 +30,29 @@ evidence:
 
 answer:
   backend: "llm"
-  max_evidence_chunks: 4
-  max_snippet_chars: 520
+  max_evidence_chunks: 5
+  max_snippet_chars: 600
+  max_chars_per_evidence: 900
   llm_model_name: null
 
 retrieval:
   default_top_k: 8
+  faiss_candidate_pool_factor: 8
+  hybrid_bm25: true
+  hybrid_dense_weight: 0.58
+  diversify_max_per_bank: 2
+  diversify_max_per_source_url: 2
+  cross_encoder_enabled: false
+  cross_encoder_model: cross-encoder/ms-marco-MultilingualBERT-L-12
+  cross_encoder_top_n: 24
 
 bank_aliases:
   ameriabank: ["ameriabank", "ameria", "ամերիա", "ամերիաբանկ"]
   acba: ["acba", "acba bank", "ակբա"]
   idbank: ["idbank", "id bank", "այդիբանկ", "իդբանկ"]
+
+orchestration:
+  require_explicit_bank: false
+  restrict_evidence_to_single_bank_without_comparison: false
+  clarify_when_unscoped_multi_bank_evidence: false
+  refuse_comparison_without_multi_bank_evidence: false

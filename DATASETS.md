@@ -15,8 +15,8 @@ This tree includes **all three banks** (ACBA, Ameriabank, IDBank) × **three top
 If `indexing/chunker.py` or chunking config changes, regenerate chunks and rebuild the canonical index:
 
 ```bash
-python -m voice_ai_banking_support_agent.cli scrape --banks acba ameriabank idbank --topics credit deposit branch --config validation_manifest_update_hy.yaml
-python -m voice_ai_banking_support_agent.cli build-index --index-name hy_model_index --banks acba ameriabank idbank --topics credit deposit branch --config validation_manifest_update_hy.yaml
+python cli.py --config validation_manifest_update_hy.yaml scrape --banks acba ameriabank idbank --topics credit deposit branch
+python cli.py --config validation_manifest_update_hy.yaml build-index --index-name hy_model_index --banks acba ameriabank idbank --topics credit deposit branch
 ```
 
 ## Local LiveKit (Docker)

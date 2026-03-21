@@ -16,7 +16,7 @@ from ..models import TopicLabel
 from ..scrapers.acba import AcbaScraper
 from ..scrapers.ameriabank import AmeriaBankScraper
 from ..scrapers.idbank import IDBankScraper
-from ..scrapers.base import RequestsHTMLFetcher, extract_page_title
+from ..scrapers.base import RequestsHTMLFetcher, extract_page_title, normalize_seed_url
 from ..utils.text import stable_id
 from ..utils.logging import setup_logging
 
@@ -155,6 +155,7 @@ def build_dataset(
                 branches_path.touch(exist_ok=True)
 
             for url in urls:
+                url = normalize_seed_url(url.strip())
                 # Save raw HTML as an artifact for inspection/debugging.
                 page_id = stable_id(bank_key, topic, url)
                 raw_path = config.raw_html_dir / bank_key / topic / f"{page_id}.html"

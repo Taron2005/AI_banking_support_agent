@@ -10,7 +10,7 @@ try:
     from dotenv import load_dotenv
 
     _root = Path(__file__).resolve().parents[3]
-    load_dotenv(_root / ".env")
+    load_dotenv(_root / ".env", override=False)
 except ImportError:
     pass
 
@@ -21,8 +21,63 @@ from ..runtime.session_state import SessionStateStore
 from ..utils.logging import setup_logging
 from .factory import build_runtime_for_voice, build_voice_dependencies
 from .livekit_agent import LiveKitParticipantContext, LiveKitVoiceAgent
+from .stt import HTTPWhisperSTTProvider, MockSTTProvider
+from .tts import HTTPTTSProvider, MockTTSProvider
 from .voice_config import load_voice_config
 from .voice_models import STTInput
+
+import logging
+
+_voice_log = logging.getLogger(__name__)
+
+
+def _resolve_voice_config_path(project_root: str, voice_config_path: str | None) -> Path | None:
+    if not voice_config_path:
+        return None
+    p = Path(voice_config_path)
+    return p if p.is_absolute() else Path(project_root).resolve() / p
+
+
+def _log_llm_settings(llm_settings) -> None:
+    """Match backend startup: make Gemini configuration obvious for voice turns."""
+
+    if llm_settings.provider == "mock":
+        _voice_log.warning(
+            "LLM is MOCK — synthesis uses MockLLMClient in tests or explicit mock config; not for production demos."
+        )
+        return
+    if llm_settings.provider == "gemini" and not llm_settings.is_live_llm_configured():
+        _voice_log.error(
+            "Gemini API key missing (GEMINI_API_KEY / GOOGLE_API_KEY). "
+            "Voice answers will use explicit extractive fallback like the REST API without a key."
+        )
+        return
+    _voice_log.info(
+        "LLM (voice stack): provider=%s model=%s — same RuntimeOrchestrator as POST /chat",
+        llm_settings.provider,
+        llm_settings.model,
+    )
+
+
+def _log_voice_providers(voice_cfg, deps) -> None:
+    """Make STT/TTS mode obvious at startup (mock vs HTTP is a common misconfiguration)."""
+    stt_ep = (voice_cfg.stt.endpoint or "").strip()
+    tts_ep = (voice_cfg.tts.endpoint or "").strip()
+    if isinstance(deps.stt, MockSTTProvider):
+        _voice_log.error(
+            "STT is MOCK (no real speech-to-text). Set VOICE_STT_ENDPOINT in .env "
+            "or stt.endpoint in voice_config.yaml, then restart this agent. "
+            "Also run: python scripts/voice_http_stt_server.py"
+        )
+    elif isinstance(deps.stt, HTTPWhisperSTTProvider):
+        _voice_log.info("STT: HTTP Whisper -> %s", stt_ep or "(missing - check .env)")
+    if isinstance(deps.tts, MockTTSProvider):
+        _voice_log.error(
+            "TTS is MOCK (silent/minimal audio). Set VOICE_TTS_ENDPOINT in .env "
+            "or tts.endpoint in voice_config.yaml. Run: python scripts/voice_http_tts_server.py"
+        )
+    elif isinstance(deps.tts, HTTPTTSProvider):
+        _voice_log.info("TTS: HTTP -> %s", tts_ep or "(missing - check .env)")
 
 
 def _safe(text: str) -> str:
@@ -41,11 +96,14 @@ def run_voice_smoke(
     app_cfg = load_config(project_root=Path(project_root).resolve(), config_yaml=Path(app_config_path).resolve() if app_config_path else None)
     runtime_settings = load_runtime_settings(runtime_config_path)
     llm_settings = load_llm_settings(llm_config_path)
-    voice_cfg = load_voice_config(voice_config_path)
+    _log_llm_settings(llm_settings)
+    vpath = _resolve_voice_config_path(project_root, voice_config_path)
+    voice_cfg = load_voice_config(vpath)
     runtime = build_runtime_for_voice(
         app_config=app_cfg, runtime_settings=runtime_settings, llm_settings=llm_settings
     )
     deps = build_voice_dependencies(voice_cfg)
+    _log_voice_providers(voice_cfg, deps)
     agent = LiveKitVoiceAgent(
         runtime=runtime,
         state_store=SessionStateStore(),
@@ -90,11 +148,14 @@ def run_livekit_agent(
     app_cfg = load_config(project_root=Path(project_root).resolve(), config_yaml=Path(app_config_path).resolve() if app_config_path else None)
     runtime_settings = load_runtime_settings(runtime_config_path)
     llm_settings = load_llm_settings(llm_config_path)
-    voice_cfg = load_voice_config(voice_config_path)
+    _log_llm_settings(llm_settings)
+    vpath = _resolve_voice_config_path(project_root, voice_config_path)
+    voice_cfg = load_voice_config(vpath)
     runtime = build_runtime_for_voice(
         app_config=app_cfg, runtime_settings=runtime_settings, llm_settings=llm_settings
     )
     deps = build_voice_dependencies(voice_cfg)
+    _log_voice_providers(voice_cfg, deps)
     agent = LiveKitVoiceAgent(
         runtime=runtime,
         state_store=SessionStateStore(),

@@ -1,178 +1,191 @@
 # Armenian Voice AI Banking Support Agent
 
-Production-style local stack: **official bank website data** (3 Armenian banks) → **FAISS + Armenian embeddings** → **grounded runtime** (credits / deposits / branches only) → **Groq** answers (evidence-only) → **HTTP Armenian STT/TTS** + **self-hosted LiveKit** with **push-to-talk** (mic never always-on).
+End-to-end **voice and text** customer-support assistant for **three Armenian retail banks**. Answers are **grounded only in scraped official website content** (credits, deposits, branch locations). The assistant responds in **Armenian**, uses **Google Gemini** for synthesis when configured, and connects to **open-source LiveKit** (self-hosted) for real-time audio with **push-to-talk**.
 
-## 1. Project overview
+---
 
-- **Ingestion**: manifest-driven scraping from ACBA, Ameriabank, IDBank (`manifests/banks.yaml`).
-- **Retrieval**: `Metric-AI/armenian-text-embeddings-2-large` + **FAISS** (`indexing/`).
-- **Runtime**: follow-up merge → topic gate → bank filter → retrieval → evidence check → **Groq-grounded Armenian answers** with extractive fallback (`runtime/`).
-- **Voice**: Python agent on **self-hosted LiveKit**; **push-to-talk** (`voice.ptt` start/end) → **HTTP STT** (Whisper-style, `language=hy`) → same runtime as text → **HTTP TTS** (Armenian, WAV).
-- **API**: FastAPI `/chat` + LiveKit token/config (`run_runtime_api.py`).
-- **UI**: React product UI + voice controls (`frontend-react/`).
+## Summary for reviewers and hiring managers
 
-## 2. Architecture (short)
+This repository delivers a **manifest-driven RAG pipeline** (scrape → clean → chunk → FAISS), a **strict runtime** (topic and bank gating, evidence checks, anti-hallucination prompts and post-processing), a **FastAPI** service (`/chat`, health, LiveKit token endpoints), a **React** UI, and a **Python LiveKit agent** that routes microphone audio through **HTTP STT** (Armenian), the same orchestration as text chat, and **HTTP TTS** back to the room. **LiveKit Cloud is not used**; cloud-style URLs are rejected in configuration and in the browser client.
 
+**Banks in scope (official sites only):** ACBA (`acba`), Ameriabank (`ameriabank`), IDBank (`idbank`) — defined in `manifests/banks.yaml`. Adding another bank is a configuration and re-indexing step, not a fork of core logic.
+
+**Private repository:** If this repo is private for submission, add **HaykTarkhanyan** with **read** access in GitHub (Settings → Collaborators). Invites cannot be generated from the codebase.
+
+---
+
+## Product scope and guardrails
+
+| Area | Behavior |
+|------|----------|
+| **In scope** | Consumer-oriented **credits (loans)**, **deposits**, **branches / addresses / ATMs** for the configured banks, plus tight follow-ups when topic and bank context are already clear. |
+| **Out of scope** | Cards, FX, transfers, investment advice, “best bank” recommendations, and other non-product topics → refusal or clarification in Armenian. |
+| **Grounding** | Factual claims must follow **retrieved chunks**. The LLM is instructed not to use general world knowledge for rates, URLs, or branch facts; unknown URLs are stripped from model output. If Gemini is unavailable, **extractive fallback** still uses only evidence text. |
+| **Voice UX** | Replies are shaped for **spoken Armenian**: short sentences, no markdown headings or bullet lists in the LLM prompt path; source URLs are collected under **«Աղբյուրներ»** for traceability. |
+
+Optional **stricter orchestration** (e.g. require explicit bank name, refuse comparison without two banks in evidence) is configurable in `runtime_config.yaml` under `orchestration:` and is described in `docs/PROMPT_ARCHITECTURE.md`.
+
+---
+
+## System architecture
+
+### Offline data pipeline
+
+```mermaid
+flowchart LR
+  M[manifests/banks.yaml] --> S[scrape]
+  S --> C[clean + chunk JSONL]
+  C --> E[embed chunks]
+  E --> F[FAISS index + metadata.jsonl]
 ```
-User (text or audio)
-  → [LiveKit + STT optional] → text query
-  → RuntimeOrchestrator: normalize → follow-up resolve → topic classify → bank detect → retrieve (FAISS + filters) → evidence → Groq (evidence-only) or extractive fallback
-  → [TTS optional] → audio
+
+### Runtime (text and voice share one path after speech-to-text)
+
+```mermaid
+flowchart TD
+  Q[User query text] --> N[Normalize + follow-up resolve]
+  N --> T[TopicClassifier: credit / deposit / branch only]
+  T -->|out of scope| R[Refusal]
+  T --> B[Bank detect + scope]
+  B --> RET[Retrieve FAISS + filters + rerank]
+  RET --> E[Evidence pack + checks]
+  E -->|weak evidence| R
+  E --> L[LLM Armenian synthesis OR extractive fallback]
+  L --> A[Answer + sources from evidence URLs only]
 ```
 
-LiveKit Cloud URLs are **rejected** by `voice/voice_config.py` (self-hosted OSS only).
+### Voice path (push-to-talk)
 
-## 3. Data pipeline
+```mermaid
+sequenceDiagram
+  participant UI as Browser PTT
+  participant LK as LiveKit OSS
+  participant AG as Voice agent
+  participant STT as HTTP STT hy
+  participant API as Runtime API
+  participant TTS as HTTP TTS hy
+  UI->>LK: voice.ptt start/end
+  LK->>AG: audio track
+  AG->>STT: WAV multipart language=hy
+  STT-->>AG: transcript UTF-8
+  AG->>API: same logic as POST /chat
+  API-->>AG: Armenian answer text
+  AG->>TTS: JSON text+language
+  TTS-->>AG: WAV
+  AG->>LK: assistant audio + voice.transcript.final
+```
 
-1. `scrape` — fetch manifest URLs, clean HTML, chunk → JSONL under dataset dir.
-2. `build-index` — embed chunks, write `faiss.index` + `metadata.jsonl`.
+**LiveKit:** Docker image `livekit/livekit-server`, signaling URL such as `ws://127.0.0.1:7880`. JWTs for browser and agent: `GET /api/livekit/token?identity=...` from this API, or offline token generation via `scripts/generate_livekit_token.py`.
 
-**Production dataset (submission default)** — see `DATASETS.md`:
+**UTF-8:** JSON, HTML, STT/TTS payloads, and LiveKit data-channel messages are handled as UTF-8 so Armenian text is preserved end-to-end.
+
+---
+
+## Models and integration choices
+
+### Embeddings: `Metric-AI/armenian-text-embeddings-2-large`
+
+**Why:** Retrieval quality for **Armenian (hy)** is central to this product. General-purpose English embeddings underperform on inflected Armenian banking copy. This model is used to build dense vectors stored in **FAISS** for fast similarity search over the ingested corpus.
+
+### LLM: Google **Gemini** (default `gemini-2.0-flash` in `llm_config.yaml`)
+
+**Why:** Gemini offers a **long-context** API suitable for packing multiple evidence excerpts with clear numbering, works well with **structured Armenian output** when constrained by system and user prompts (`runtime/llm.py`, `runtime/rag_prompts.py`, `runtime/prompts.py`), and is straightforward to operate via API key (`GEMINI_API_KEY` or `GOOGLE_API_KEY`). **`gemini-1.5-pro`** can be selected via `LLM_MODEL` in `.env` if higher-quality Armenian paraphrase is worth extra latency or quota.
+
+**Reliability:** If the API key is missing or the call fails, the service falls back to a **deterministic extractive** answer built only from retrieved chunks and logs an explicit `llm_error` / `answer_synthesis` field so behavior is auditable.
+
+### Speech: HTTP STT and HTTP TTS (pluggable)
+
+**Why:** Banking organizations may mandate **on-prem STT/TTS**, **vendor APIs**, or **local demos**. The agent speaks to **HTTP endpoints** (Whisper-style STT with `language=hy`, WAV in / JSON out; TTS returning WAV or base64). The repository includes **optional** local reference servers (`scripts/voice_http_stt_server.py`, `scripts/voice_http_tts_server.py`) using **faster-whisper** and **Edge TTS** (Armenian voice, e.g. `hy-AM-AnahitNeural`): **low recurring API cost**, **higher CPU latency** on first Whisper load. **Mock** STT/TTS is supported for CI and UI wiring (`VOICE_USE_MOCK=1` or YAML providers).
+
+### Vector search: **FAISS (CPU)**
+
+**Why:** The corpus is bounded and versioned with the repo; **local** FAISS indexes avoid network dependency at query time and keep latency predictable for demos and evaluation.
+
+---
+
+## Dataset and index (submission default)
 
 | Item | Value |
 |------|--------|
-| Config YAML | `validation_manifest_update_hy.yaml` |
-| Root folder | `data_manifest_update_hy/` |
+| Config | `validation_manifest_update_hy.yaml` |
+| Data root | `data_manifest_update_hy/` |
 | Index name | `hy_model_index` |
 
-## 4. Runtime flow
+Details: `DATASETS.md`. A prebuilt index is included so evaluators can run the stack **without** a long scrape/embed pass unless they choose to rebuild.
 
-1. **TopicClassifier** — only `credit`, `deposit`, `branch`; weak-only queries → **ambiguous** (refusal to clarify). Unsupported intents → refusal.
-2. **RuntimeRetriever** — query embedding + FAISS search with **topic** and optional **bank** metadata filters.
-3. **EvidenceChecker** — minimum similarity + branch/address heuristics when needed.
-4. **LLMAnswerGenerator** (default when `answer.backend: llm`) — **Groq** only; user prompt lists numbered evidence blocks; system prompt in `runtime/llm.py` forbids facts outside evidence.
-5. **GroundedAnswerGenerator** — deterministic extractive fallback if Groq is unavailable, declines, or errors.
+---
 
-## 5. Voice flow (default = real HTTP path)
+## Prerequisites
 
-1. **Docker LiveKit** — `docker compose up -d` (defaults: `devkey` / `secret`, UDP range in `docker-compose.yml`).
-2. **JWTs** — `GET /api/livekit/token?identity=web-user-1` (React + `run_voice_agent` when `LIVEKIT_TOKEN` unset).
-3. **STT** — set **`VOICE_STT_ENDPOINT`** to a Whisper-compatible **POST multipart** endpoint: form field **`file`** (WAV), **`language=hy`**, JSON response with transcript in **`text`** (or `transcription`). UTF-8 Armenian preserved.
-4. **TTS** — set **`VOICE_TTS_ENDPOINT`** to a service accepting JSON **`{ text, language, voice, format }`** and returning **WAV** (raw or base64 in `audio_base64` / `audio`).
-5. **Push-to-talk** — browser sends reliable data on topic **`voice.ptt`**: `{"type":"start"}` then publishes mic; `{"type":"end"}` then unpublishes. Agent buffers only while **start** is active.
-6. **Transcript feedback (UI)** — after **Stop & send**, the agent runs STT, then publishes **`voice.transcript.final`** with the recognized text (UTF‑8 Armenian). The React UI shows it in the chat with an **STT** badge *before* the assistant answer. Server **`voice.state`** includes `listening`, `processing` (with `detail`: `transcribing` / `answering`), `speaking`, `idle`, `busy`, `error`.
-7. **Mock / CI** — set **`VOICE_USE_MOCK=1`** or `stt.provider: mock` / `tts.provider: mock` in a copied `voice_config.yaml`.
+- **Python 3.10+**
+- **Node.js 18+** (web UI)
+- **Docker Desktop** (self-hosted LiveKit for voice)
+- **Google AI Studio API key** for full Gemini synthesis ([get a key](https://aistudio.google.com/apikey))
 
-### Quick path: run local STT + TTS on your PC
+---
 
-1. Install server extras (Whisper + Edge TTS + miniaudio + multipart):
+## Installation (clone → venv → dependencies)
 
-   ```bash
-   pip install -e ".[voice_local_servers]"
-   ```
-
-2. **Terminal A — STT** (first run downloads the Whisper model):
-
-   ```bash
-   python scripts/voice_http_stt_server.py
-   ```
-
-3. **Terminal B — TTS** (MP3 from Edge is converted to WAV with **miniaudio** — no ffmpeg):
-
-   ```bash
-   python scripts/voice_http_tts_server.py
-   ```
-
-4. In **`.env`**:
-
-   ```env
-   VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe
-   VOICE_TTS_ENDPOINT=http://127.0.0.1:8089/synthesize
-   ```
-
-   Leave **`VOICE_STT_API_KEY`** / **`VOICE_TTS_API_KEY`** empty for these local servers.
-
-5. Optional: in **`voice_config.yaml`** (or example copy), set `tts.voice_name` to **`hy-AM-AnahitNeural`** (or keep **`default`** — the sample TTS server maps `default` to that voice).
-
-Windows: **`scripts\run_voice_stt_server.bat`** and **`scripts\run_voice_tts_server.bat`** run the same apps.
-
-## 6. Model choices
-
-| Component | Choice | Why |
-|-----------|--------|-----|
-| Embeddings | `Metric-AI/armenian-text-embeddings-2-large` | Armenian-centric retrieval quality. |
-| Answers | **Groq** (`llama-3.1-8b-instant`) after evidence gate | Fast, fluent Armenian; still grounded on retrieved chunks only. |
-| Fallback | Extractive snippets | Used when `GROQ_API_KEY` is missing or the API errors. |
-| STT/TTS | **HTTP default** (`http_whisper` / `http_tts` in `voice_config.example.yaml`) | Set `VOICE_STT_ENDPOINT` / `VOICE_TTS_ENDPOINT`; mock only if endpoints missing or `VOICE_USE_MOCK=1`. |
-
-Set **`GROQ_API_KEY`** in `.env`. With **`runtime_config.yaml`** `answer.backend: llm` and **`llm_config.yaml`** `provider: groq`, the runtime **always** uses Groq when the key is present; otherwise it falls back to extractive answers (still grounded on chunks).
-
-## 7. Setup
-
-**Prerequisites**: Python **3.10+**, Node **18+** (for React), optional self-hosted [LiveKit server](https://github.com/livekit/livekit).
+From the repository root:
 
 ```bash
-cd "Voice AI banking support agent"
 python -m venv .venv
-.venv\Scripts\activate          # Windows
+```
+
+**Windows (PowerShell):** `.\.venv\Scripts\Activate.ps1`  
+**Linux / macOS:** `source .venv/bin/activate`
+
+```bash
 pip install -r requirements.txt
 pip install -e ".[dev]"
-pip install -e ".[voice]"       # only for LiveKit Python SDK
+pip install -e ".[voice]"
 ```
 
-Copy **`.env.example` → `.env`** and set **`GROQ_API_KEY`**, **`VOICE_STT_ENDPOINT`**, **`VOICE_TTS_ENDPOINT`** for the full Armenian voice demo. Templates: `.env.voice.example`, `.env.backend.example`, `.env.frontend.example`.
+The `[voice]` extra installs the LiveKit Python SDK for the agent. For the **reference** STT/TTS servers only: `pip install -e ".[voice_local_servers]"`.
 
-**Install embedding model** on first retrieval (downloads from Hugging Face).
+### Environment files
 
-### Helper scripts (Windows / Linux)
+Copy **`.env.example`** to **`.env`** and set at least **`GEMINI_API_KEY`**. For voice, align **`LIVEKIT_URL`**, **`LIVEKIT_API_KEY`**, **`LIVEKIT_API_SECRET`** with `docker/livekit.yaml` (defaults are `devkey` / `secret` for local Docker). Copy **`voice_config.example.yaml`** to **`voice_config.yaml`** (the latter is gitignored). Templates: `.env.backend.example`, `.env.voice.example`, `.env.frontend.example`, `llm_config.example.yaml`.
 
-| Step | Windows | Linux / macOS |
-|------|---------|----------------|
-| Create venv + install | `scripts\setup_env.bat` | `bash scripts/setup_env.sh` |
-| LiveKit (Docker) | `scripts\run_livekit.bat` | `bash scripts/run_livekit.sh` |
-| Backend API | `scripts\run_backend.bat` | `bash scripts/run_backend.sh` |
-| Frontend | `scripts\run_frontend.bat` | `bash scripts/run_frontend.sh` |
-| Voice agent | `scripts\run_voice_agent.bat` (fetches JWT from API if `LIVEKIT_TOKEN` empty) | `bash scripts/run_voice_agent.sh` |
-| **Full stack** | **`START_STACK.bat`** or **`START_FRESH.bat`** (clears :8000 / :5173 + `docker compose down` first) | `bash scripts/run_all.sh` |
-| **Stop stack** | **`STOP_STACK.bat`** | — |
+**Security:** Do not commit `.env` or production `voice_config.yaml`. Default LiveKit keys are for **local development** only.
 
-**Manual token (offline / no API):** `python scripts/generate_livekit_token.py --identity banking-support-agent`
+---
 
-## 7b. Local end-to-end run (recommended)
+## Running the full application
 
-**Canonical paths:** `validation_manifest_update_hy.yaml`, `data_manifest_update_hy/`, index **`hy_model_index`**. Answers use **Groq** after the evidence gate (`runtime_config.yaml` + `llm_config.yaml`); set **`GROQ_API_KEY`** in `.env`.
+### One-command stack (Windows / Linux)
 
-1. Copy **`.env.example` → `.env`** and set **`GROQ_API_KEY`** (and optionally `LIVEKIT_*` if not using Docker defaults).
-2. **Install:** `scripts\setup_env.bat` or `bash scripts/setup_env.sh`.
-3. **Run everything:** **`START_STACK.bat`** (waits until `GET /api/livekit/config` works — avoids wrong app on :8000) or **`scripts\run_all.bat`** / **`bash scripts/run_all.sh`** (same stack: Docker LiveKit, API, voice agent, Vite).
-4. Open **`http://127.0.0.1:5173`** — **Connect voice** → **Mic** (speak Armenian) → **Stop & send**; text chat uses **`hy_model_index`** automatically.
-5. **Checks:** `GET /health`, **`GET /ready`**, **`GET /api/livekit/config`**.
+| Platform | Command | What starts |
+|----------|---------|-------------|
+| Windows | `START_STACK.bat` (repo root) | Docker LiveKit, FastAPI on **:8000**, voice agent, Vite on **:5173** (`npm install` on first run). Implemented by `scripts/start_stack.ps1`. |
+| Windows | `scripts\run_all.bat` | Same as above. |
+| Linux / macOS | `bash scripts/run_all.sh` | Docker Compose, API and voice agent in background, frontend dev server. |
 
-**Run services individually:** `run_livekit` / `run_backend` / `run_frontend` / `run_voice_agent` as in the table. API loads `.env` via **`python run_runtime_api.py`**.
+These scripts **do not** start the optional local Whisper/Edge STT/TTS servers; use the commands below or mock voice.
 
-### Testing without speech servers
+### Manual order (equivalent steps)
 
-| Mode | Use |
-|------|-----|
-| **`VOICE_USE_MOCK=1`** | Forces mock STT/TTS (silent TTS; STT returns placeholder for binary audio). |
-| **`voice-smoke-test`** | CLI smoke with mock providers. |
-
-### Troubleshooting
-
-- **`LIVEKIT_TOKEN` missing** — voice agent exits immediately; generate with `scripts/generate_livekit_token.py`.  
-- **LiveKit won’t connect in the browser** (`could not establish pc connection`) — WebRTC/ICE issue. This repo maps UDP **50000-50050** for LiveKit (see `docker-compose.yml`). After editing `docker/livekit.yaml`, run `docker compose up -d --force-recreate`. Allow those UDP ports in Windows Firewall for Docker Desktop if needed. Set `LIVEKIT_URL=ws://127.0.0.1:7880` (not `http://`).  
-- **`LiveKit config HTTP 404`** — port **8000** is serving a different app (or an old build). Stop it and run **`python run_runtime_api.py`** from this repo; confirm `GET http://127.0.0.1:8000/api/livekit/config` returns JSON with `livekit_url`.  
-- **Docker: port 7880 in use** — stop other LiveKit or change host port in `docker-compose.yml`.  
-- **First `/chat` is slow** — embedding model download / FAISS load on cold start.  
-- **CORS** — API allows `*`; if the browser still blocks, check `VITE_API_BASE_URL` matches the API origin.  
-- **`livekit-api` ImportError** on token script — run `pip install -e ".[voice]"`.
-
-## 8. Running the API (default: production config)
-
-From repo root — **no extra flags required**:
+1. `docker compose up -d` (repo root)
+2. `python run_runtime_api.py` — API at `http://127.0.0.1:8000` (defaults: `validation_manifest_update_hy.yaml`, `runtime_config.yaml`, `llm_config.yaml`)
+3. Optional: `python scripts/voice_http_stt_server.py` and `python scripts/voice_http_tts_server.py`, with `VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe` and `VOICE_TTS_ENDPOINT=http://127.0.0.1:8089/synthesize` in `.env`
+4. `cd frontend-react && npm install && npm run dev` — UI typically `http://127.0.0.1:5173`
+5. Voice agent (separate terminal; global CLI flags **before** the subcommand):
 
 ```bash
-python run_runtime_api.py
+python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml voice-agent \
+  --index-name hy_model_index \
+  --runtime-config runtime_config.yaml \
+  --llm-config llm_config.yaml \
+  --voice-config voice_config.yaml
 ```
 
-Defaults:
+### Verification endpoints
 
-- `--config validation_manifest_update_hy.yaml`
-- `--runtime-config runtime_config.yaml`
-- `--llm-config llm_config.yaml`
-- `http://127.0.0.1:8000`
+- `GET /health` — process up  
+- `GET /ready` — LLM and LiveKit-related configuration surface  
+- `GET /api/livekit/config` — JSON with `livekit_url` for the frontend  
 
-**POST** `/chat` JSON body:
+### Example `/chat` request
 
 ```json
 {
@@ -184,76 +197,69 @@ Defaults:
 }
 ```
 
-## 9. Running the voice agent
+### Rebuilding corpus and index
+
+Only if you need a fresh ingest:
 
 ```bash
-python cli.py --config validation_manifest_update_hy.yaml voice-agent ^
-  --index-name hy_model_index ^
-  --runtime-config runtime_config.yaml ^
-  --llm-config llm_config.yaml ^
-  --voice-config voice_config.yaml
+python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml scrape --banks acba ameriabank idbank --topics credit deposit branch
+python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml build-index --index-name hy_model_index --banks acba ameriabank idbank --topics credit deposit branch
 ```
 
-Copy **`voice_config.example.yaml` → `voice_config.yaml`** (the example is git-tracked; your copy is git-ignored).
+---
 
-**Required env**: `LIVEKIT_URL`, `LIVEKIT_TOKEN`.  
-**Real speech**: `stt.provider: http_whisper`, `tts.provider: http_tts` in `voice_config.yaml` + **`VOICE_STT_ENDPOINT`** / **`VOICE_TTS_ENDPOINT`** in `.env`.
-
-Smoke test (mock STT/TTS, text queries):
+## Automated tests
 
 ```bash
-python cli.py --config validation_manifest_update_hy.yaml voice-smoke-test ^
-  --index-name hy_model_index ^
-  --runtime-config runtime_config.yaml ^
-  --llm-config llm_config.yaml ^
-  --voice-config voice_config.yaml
-```
-(Use `voice_config.example.yaml` if you have not created `voice_config.yaml` yet.)
-
-## 10. Running the frontend
-
-```bash
-python run_runtime_api.py
-cd frontend-react
-npm install
-npm run dev
+python -m pytest tests -m "not slow" -q
 ```
 
-Open the Vite URL (usually `http://127.0.0.1:5173`). Set `VITE_API_BASE_URL` if the API is not on `127.0.0.1:8000`.
+The `slow` suite (session-scoped client + full embedding load) is in `tests/test_submission_e2e_chat.py` and can be run with `pytest -m slow` or by path. Typical CI-style runs stay on `not slow`; manual evaluation with a real `GEMINI_API_KEY` incurs **low** API cost for short queries.
 
-Default UI index: **`hy_model_index`** (matches API defaults).
+---
 
-## 11. CLI: scrape & index (rebuild from source)
+## Operational notes and limitations
 
-```bash
-python -m voice_ai_banking_support_agent.cli scrape --banks acba ameriabank idbank --topics credit deposit branch --config validation_manifest_update_hy.yaml
-python -m voice_ai_banking_support_agent.cli build-index --index-name hy_model_index --banks acba ameriabank idbank --topics credit deposit branch --config validation_manifest_update_hy.yaml
-```
+- **Scrapers** depend on live HTML; site redesigns may require manifest or parser updates.  
+- **Branch listings** may be incomplete if banks do not publish all locations in crawled pages.  
+- **Gemini** is subject to quotas; `llm_error` may include rate-limit hints.  
+- **Push-to-talk** is not full-duplex streaming STT; transcript appears after each **Stop & send**.  
+- **Local Whisper** can be slow on first inference; increase `stt.timeout_seconds` or `VOICE_STT_TIMEOUT_SECONDS` if needed.  
+- **WebRTC:** ensure UDP ports in `docker-compose.yml` (e.g. 50000–50050) are allowed through the host firewall when using Docker Desktop on Windows.
 
-## 12. Guardrails
+---
 
-- **Topics**: only credit / deposit / branch; other → refusal or ambiguous.
-- **Retrieval**: FAISS + metadata filters; not whole-corpus prompting.
-- **Evidence**: low similarity → refusal (`insufficient_evidence`).
-- **LLM** (if enabled): system prompt forbids facts outside provided evidence block; empty evidence → extractive fallback.
+## Mapping to typical evaluation criteria
 
-## 13. Groq setup
+| Criterion | Evidence in repository |
+|-----------|-------------------------|
+| Accuracy and guardrails | `runtime/topic_classifier.py`, `runtime/orchestrator.py`, `runtime/refusal.py`, `runtime/answer_generator.py`; tests under `tests/test_runtime_*.py`, `tests/test_bank_scope.py` |
+| Voice experience | `voice/livekit_agent.py`, `voice/stt.py`, `voice/tts.py`, `frontend-react/src/App.jsx`; `tests/test_voice_*.py` |
+| Architecture and scalability | `manifests/banks.yaml`, `scrapers/`, `pipelines/`, `indexing/`, `runtime/`, `voice/`; `docker-compose.yml`, `docker/livekit.yaml` |
+| Documentation and reproducibility | This README, `DATASETS.md`, example configs (`*.example`, `runtime_config.example.yaml`) |
 
-1. `runtime_config.yaml` — `answer.backend: llm` (default in this repo).
-2. `llm_config.yaml` — `provider: groq`, `model: llama-3.1-8b-instant`.
-3. `.env` — `GROQ_API_KEY=...` (from [Groq console](https://console.groq.com)).
+---
 
-If **`GROQ_API_KEY`** is missing, the runtime **falls back to extractive answers** (still from retrieved chunks only). Automated tests may use a temporary `llm_config` with `provider: mock` (see `tests/`).
+## Documentation map
 
-## 14. Limitations
+| Document | Content |
+|----------|---------|
+| `DATASETS.md` | Dataset layout and index naming |
+| `ARCHITECTURE.md`, `RUNTIME_ARCHITECTURE.md`, `LIVEKIT_INTEGRATION_ARCHITECTURE.md` | Deeper design notes |
+| `docs/PROMPT_ARCHITECTURE.md` | RAG prompt modules and strict orchestration flags |
+| `docs/archive/` | Optional historical notes |
 
-- Bank HTML changes can break scrapers; manifests must be updated.
-- Branch pages may not expose every branch in static HTML.
-- Voice is **push-to-talk** (no continuous streaming STT); transcript appears after each **Stop & send**.
-- Mock STT on binary audio returns a placeholder unless HTTP STT is configured.
-- Duplicate legacy dataset trees were removed from the submission layout; use paths in `DATASETS.md` only.
+---
 
-## 15. Further reading
+## Helper scripts (reference)
 
-- `ARCHITECTURE.md`, `RUNTIME_ARCHITECTURE.md`, `LIVEKIT_INTEGRATION_ARCHITECTURE.md`, `DATASETS.md`
-- Optional / historical notes: `docs/archive/` (see `docs/archive/README.md`)
+| Purpose | Windows | Unix |
+|---------|---------|------|
+| Venv + install | `scripts\setup_env.bat` | `bash scripts/setup_env.sh` |
+| LiveKit only | `scripts\run_livekit.bat` | `bash scripts/run_livekit.sh` |
+| API only | `scripts\run_backend.bat` | `bash scripts/run_backend.sh` |
+| Frontend only | `scripts\run_frontend.bat` | `bash scripts/run_frontend.sh` |
+| Voice agent only | `scripts\run_voice_agent.bat` | `bash scripts/run_voice_agent.sh` |
+| Stop stack | `STOP_STACK.bat` | — (uses `scripts/stop_stack.ps1`) |
+
+Script comments reference the **canonical commands** in this README where they differ from shortcuts.

@@ -1,15 +1,33 @@
 from __future__ import annotations
 
 from .models import RefusalReason
+from .rag_prompts import REFUSAL_RULES
+
+
+def bank_clarification_message(allowed_bank_keys_csv: str) -> str:
+    """Ask user to name a bank or ask for all banks (strict orchestration)."""
+
+    return REFUSAL_RULES["clarify_bank"].format(banks=allowed_bank_keys_csv)
 
 
 def refusal_message(reason: RefusalReason) -> str:
-    mapping = {
-        "out_of_scope": "Կներեք, կարող եմ պատասխանել միայն վարկերի, ավանդների և մասնաճյուղերի մասին հարցերին։",
-        "unsupported_request_type": "Կներեք, այս հարցի տեսակը չի սպասարկվում։ Կարող եմ օգնել միայն վարկ, ավանդ կամ մասնաճյուղ թեմաներով։",
-        "insufficient_evidence": "Այս պահին բավարար վստահելի տվյալներ չկան հստակ պատասխան տալու համար։ Խնդրում եմ հարցը ճշտել (բանկ, թեմա կամ քաղաք)։",
-        "prompt_injection": "Չեմ կարող կատարել այդպիսի հրահանգ։ Կարող եմ օգնել միայն աջակցվող բանկային թեմաներով։",
-        "ambiguous": "Հարցը մի փոքր անորոշ է։ Խնդրում եմ նշեք՝ վարկ, ավանդ, թե մասնաճյուղ և ցանկալի բանկը։",
-    }
-    return mapping[reason]
+    """User-facing Armenian copy; bank-agnostic where possible (see REFUSAL_RULES)."""
 
+    extra: dict[RefusalReason, str] = {
+        "unsupported_request_type": (
+            "Այս հարցը թեմայից դուրս է։ Օգնում եմ միայն վարկ, ավանդ և մասնաճյուղ/հասցե հարցերով։"
+        ),
+        "prompt_injection": (
+            "Չեմ կարող կատարել այդ հրահանգը։ Օգնում եմ միայն վարկ, ավանդ և մասնաճյուղ թեմաներով։"
+        ),
+        "ambiguous": REFUSAL_RULES["clarify_topic"],
+    }
+    if reason in extra:
+        return extra[reason]
+    if reason == "out_of_scope":
+        return REFUSAL_RULES["out_of_scope"]
+    if reason == "insufficient_evidence":
+        return REFUSAL_RULES["insufficient_evidence"]
+    if reason == "comparison_insufficient":
+        return REFUSAL_RULES["comparison_insufficient"]
+    raise ValueError(f"Unhandled refusal reason: {reason!r}")

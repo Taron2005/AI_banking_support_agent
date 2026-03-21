@@ -42,7 +42,17 @@ def _remove_decorative_elements(soup: BeautifulSoup, rules: BankExtractionRules 
         tag.decompose()
 
     # Remove elements by class/id heuristics.
-    noise_markers = {"menu", "breadcrumb", "cookies", "cookie", "footer", "header", "social"}
+    noise_markers = {
+        "menu",
+        "breadcrumb",
+        "cookies",
+        "cookie",
+        "footer",
+        "header",
+        "social",
+        "banner",
+        "contentinfo",
+    }
     for el in soup.find_all(True):
         # BeautifulSoup tags may have `attrs=None` depending on parser/content.
         # Guard against that so we never crash the pipeline.
@@ -119,6 +129,43 @@ def normalize_text(text: str) -> str:
     # Normalize repeated punctuation (very common in scraped pages).
     text = re.sub(r"([.!?…])\1{1,}", r"\1", text)
     return text.strip()
+
+
+def merge_short_list_runs(
+    lines: list[str],
+    *,
+    max_line_len: int = 42,
+    min_run: int = 5,
+    max_merged_chars: int = 720,
+) -> list[str]:
+    """
+    Collapse long runs of very short lines (common on list-heavy bank pages) into one line.
+
+    Improves chunk coherence for retrieval without dropping list content.
+    """
+
+    if len(lines) < min_run:
+        return lines
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if len(lines[i]) > max_line_len:
+            out.append(lines[i])
+            i += 1
+            continue
+        j = i
+        while j < len(lines) and len(lines[j]) <= max_line_len:
+            j += 1
+        run = lines[i:j]
+        if len(run) >= min_run:
+            merged = "; ".join(x.strip().rstrip(";") for x in run if x.strip())
+            if len(merged) > max_merged_chars:
+                merged = merged[: max_merged_chars - 1] + "…"
+            out.append(merged)
+        else:
+            out.extend(run)
+        i = j
+    return out
 
 
 def remove_noise_lines(lines: Iterable[str]) -> Tuple[list[str], list[str]]:
@@ -213,6 +260,7 @@ def clean_html_to_text(html: str, rules: BankExtractionRules | None = None) -> C
 
     lines = _split_lines(raw_text)
     kept_lines, _removed_reasons = remove_noise_lines(lines)
+    kept_lines = merge_short_list_runs(kept_lines)
     cleaned_text = normalize_text("\n".join(kept_lines))
 
     usable, warning = is_text_useful(cleaned_text)

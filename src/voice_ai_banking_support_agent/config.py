@@ -18,6 +18,8 @@ class NetworkConfig:
     retries: int = 3
     backoff_min_seconds: float = 1.0
     backoff_max_seconds: float = 10.0
+    # Polite pause before each live HTTP request (skipped when reusing cached raw HTML). Set via YAML/env for production scrapes.
+    request_delay_seconds: float = 0.0
     user_agent: str = (
         "voice-ai-banking-support-agent/0.1 (+https://example.invalid; contact: offline indexing)"
     )
@@ -32,7 +34,7 @@ class ChunkingConfig:
     min_words: int = 80
     max_words: int = 450
     # Number of trailing sentences carried into the next chunk for continuity (0 = none).
-    overlap_sentences: int = 1
+    overlap_sentences: int = 2
 
     # Hard cap on the number of sections extracted from a single page (safety guard).
     max_sections_per_page: int = 50
@@ -154,6 +156,11 @@ def load_config(project_root: Path, config_yaml: Path | None = None) -> AppConfi
     if os.getenv("SCRAPER_USER_AGENT"):
         overrides.setdefault("network", {})
         overrides["network"]["user_agent"] = os.getenv("SCRAPER_USER_AGENT")
+    if os.getenv("SCRAPER_REQUEST_DELAY_SECONDS"):
+        overrides.setdefault("network", {})
+        overrides["network"]["request_delay_seconds"] = float(
+            os.getenv("SCRAPER_REQUEST_DELAY_SECONDS", "0")
+        )
 
     # Apply nested updates for network/chunking.
     network_updates = overrides.get("network")

@@ -22,7 +22,7 @@ class STTSettings(BaseModel):
     provider: Literal["mock", "http_whisper"] = "http_whisper"
     language: str = "hy"
     endpoint: str | None = None
-    timeout_seconds: float = 45.0
+    timeout_seconds: float = 180.0
     api_key: str | None = None
     api_key_header: str = "Authorization"
     response_text_field: str = "text"
@@ -48,7 +48,7 @@ class TTSSettings(BaseModel):
 class VoiceBehaviorSettings(BaseModel):
     debug: bool = False
     verbose_trace: bool = False
-    max_response_chars: int = 1800
+    max_response_chars: int = 4000
 
 
 class VoiceConfig(BaseModel):
@@ -96,10 +96,10 @@ def load_voice_config(path: str | Path | None = None) -> VoiceConfig:
     env_url = os.getenv("LIVEKIT_URL")
     env_key = os.getenv("LIVEKIT_API_KEY")
     env_secret = os.getenv("LIVEKIT_API_SECRET")
-    stt_endpoint = os.getenv("VOICE_STT_ENDPOINT")
-    stt_key = os.getenv("VOICE_STT_API_KEY")
-    tts_endpoint = os.getenv("VOICE_TTS_ENDPOINT")
-    tts_key = os.getenv("VOICE_TTS_API_KEY")
+    stt_endpoint = (os.getenv("VOICE_STT_ENDPOINT") or "").strip() or None
+    stt_key = (os.getenv("VOICE_STT_API_KEY") or "").strip() or None
+    tts_endpoint = (os.getenv("VOICE_TTS_ENDPOINT") or "").strip() or None
+    tts_key = (os.getenv("VOICE_TTS_API_KEY") or "").strip() or None
     if env_url:
         cfg.livekit.url = env_url
     cfg.livekit.url = _coerce_livekit_ws_url(cfg.livekit.url)
@@ -111,10 +111,22 @@ def load_voice_config(path: str | Path | None = None) -> VoiceConfig:
         cfg.stt.endpoint = stt_endpoint
     if stt_key:
         cfg.stt.api_key = stt_key
+    stt_to = (os.getenv("VOICE_STT_TIMEOUT_SECONDS") or "").strip()
+    if stt_to:
+        try:
+            cfg.stt.timeout_seconds = float(stt_to)
+        except ValueError:
+            pass
     if tts_endpoint:
         cfg.tts.endpoint = tts_endpoint
     if tts_key:
         cfg.tts.api_key = tts_key
+    tts_to = (os.getenv("VOICE_TTS_TIMEOUT_SECONDS") or "").strip()
+    if tts_to:
+        try:
+            cfg.tts.timeout_seconds = float(tts_to)
+        except ValueError:
+            pass
     _validate_self_hosted_url(cfg.livekit.url)
     force_mock = (os.getenv("VOICE_USE_MOCK") or "").strip().lower() in ("1", "true", "yes")
     if force_mock:

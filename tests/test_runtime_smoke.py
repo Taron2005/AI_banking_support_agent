@@ -47,3 +47,20 @@ def test_runtime_smoke_refused_unsupported() -> None:
     assert out.status == "refused"
     assert out.refusal_reason == "unsupported_request_type"
 
+
+class EmptyRetriever:
+    def retrieve(self, req):  # noqa: ANN001
+        return []
+
+
+def test_runtime_smoke_refused_insufficient_evidence_when_no_chunks() -> None:
+    """In-scope topic but retrieval returns nothing → evidence gate must refuse (no LLM facts)."""
+    orch = RuntimeOrchestrator(retriever=EmptyRetriever())  # type: ignore[arg-type]
+    store = SessionStateStore()
+    state = store.get_or_create("s3")
+    out = orch.handle(
+        RuntimeRequest(session_id="s3", query="Ի՞նչ ավանդներ կան Ամերիաբանկում", index_name="i"), state
+    )
+    assert out.status == "refused"
+    assert out.refusal_reason == "insufficient_evidence"
+

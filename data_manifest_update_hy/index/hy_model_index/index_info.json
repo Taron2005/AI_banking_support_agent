@@ -1,5 +1,6 @@
 {
   "index_name": "hy_model_index",
   "embedding_dim": 1024,
-  "vector_count": 170
+  "vector_count": 439,
+  "embedding_model_name": "Metric-AI/armenian-text-embeddings-2-large"
 }

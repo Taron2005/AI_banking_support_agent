@@ -73,8 +73,50 @@ def test_vector_store_bank_filter_accepts_bank_key(tmp_path: Path) -> None:
         index_path=index_dir / "faiss.index",
         metadata_path=index_dir / "metadata.jsonl",
     )
-    result = store.search(query_embedding=emb, top_k=1, bank_filter="acba")
+    result = store.search(query_embedding=emb, top_k=1, bank_keys=frozenset({"acba"}))
     assert len(result) == 1
+
+
+def test_vector_store_bank_keys_allowlist_or_semantics(tmp_path: Path) -> None:
+    index_dir = tmp_path / "index2"
+    docs = [
+        DocumentMetadata(
+            bank_key="acba",
+            bank_name="ACBA Bank",
+            topic="credit",
+            source_url="https://example.test/a",
+            page_title="Credit",
+            section_title="Terms",
+            language="hy",
+            chunk_id="chunk-1",
+            raw_text="raw",
+            cleaned_text="acba credit",
+        ),
+        DocumentMetadata(
+            bank_key="idbank",
+            bank_name="IDBank",
+            topic="credit",
+            source_url="https://example.test/b",
+            page_title="Credit",
+            section_title="Terms",
+            language="hy",
+            chunk_id="chunk-2",
+            raw_text="raw",
+            cleaned_text="idbank credit",
+        ),
+    ]
+    emb = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    FaissVectorStore.build_and_save(embeddings=emb, docs=docs, index_dir=index_dir, index_name="t2")
+    store = FaissVectorStore(
+        index_path=index_dir / "faiss.index",
+        metadata_path=index_dir / "metadata.jsonl",
+    )
+    q = np.array([[1.0, 0.0]], dtype=np.float32)
+    both = store.search(query_embedding=q, top_k=4, bank_keys=frozenset({"acba", "idbank"}))
+    assert both and both[0].doc.bank_key == "acba"
+    assert {r.doc.bank_key for r in both}.issubset({"acba", "idbank"})
+    only_id = store.search(query_embedding=np.array([[0.0, 1.0]], dtype=np.float32), top_k=4, bank_keys=frozenset({"idbank"}))
+    assert len(only_id) == 1 and only_id[0].doc.bank_key == "idbank"
 
 
 def test_dedup_jsonl_appender_avoids_duplicate_rows(tmp_path: Path) -> None:

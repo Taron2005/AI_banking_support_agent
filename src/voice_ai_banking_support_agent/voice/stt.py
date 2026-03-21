@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -9,6 +10,13 @@ import requests
 from .voice_models import STTInput
 
 logger = logging.getLogger(__name__)
+
+# Returned for binary audio when mock STT is used (no endpoint or HTTP fallback).
+MOCK_STT_PLACEHOLDER = "[mock-stt-unavailable]"
+
+
+def is_mock_stt_placeholder(text: str | None) -> bool:
+    return (text or "").strip() == MOCK_STT_PLACEHOLDER
 
 
 class STTProvider(Protocol):
@@ -121,37 +129,68 @@ class HTTPWhisperSTTProvider:
             ),
         }
         data = {"language": lang}
-        try:
-            resp = requests.post(
-                self.endpoint,
-                headers=headers,
-                files=files,
-                data=data,
-                timeout=self.timeout_seconds,
-            )
-            resp.raise_for_status()
-            ctype = (resp.headers.get("content-type") or "").lower()
-            if "application/json" not in ctype:
-                text = resp.content.decode("utf-8", errors="replace").strip()
-                if text:
-                    return text
-                raise RuntimeError("STT returned non-JSON empty body")
-            body = resp.json()
-            text = _extract_transcript(body, self.response_text_field)
-            if not text:
-                raise RuntimeError("STT returned empty transcript")
-            return text
-        except Exception as exc:
-            logger.warning(
-                "HTTP STT request failed (%s). Endpoint=%s — using fallback if configured.",
-                exc,
-                self.endpoint,
-            )
-            logger.debug("STT failure detail", exc_info=True)
-            if self.fallback_provider is not None:
-                logger.info("STT: falling back to secondary provider.")
-                return self.fallback_provider.transcribe(payload)
-            raise RuntimeError(
-                "STT transcription failed and no fallback is configured. "
-                "Set VOICE_STT_ENDPOINT or enable fallback_to_mock in voice config."
-            ) from exc
+        # (connect_timeout, read_timeout): local Whisper often needs >45s on CPU / cold model load.
+        read_to = float(self.timeout_seconds)
+        connect_to = min(20.0, max(5.0, read_to * 0.15))
+        timeout = (connect_to, read_to)
+        delays = (0.6, 2.0, 5.0)
+        last_exc: Exception | None = None
+        for attempt in range(len(delays) + 1):
+            try:
+                resp = requests.post(
+                    self.endpoint,
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    timeout=timeout,
+                )
+                resp.raise_for_status()
+                if not resp.encoding:
+                    resp.encoding = resp.apparent_encoding or "utf-8"
+                ctype = (resp.headers.get("content-type") or "").lower()
+                if "application/json" not in ctype:
+                    text = resp.content.decode("utf-8", errors="replace").strip()
+                    if text:
+                        return text
+                    raise RuntimeError("STT returned non-JSON empty body")
+                body = resp.json()
+                text = _extract_transcript(body, self.response_text_field)
+                if not text:
+                    raise RuntimeError("STT returned empty transcript")
+                return text
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                last_exc = exc
+                if attempt < len(delays):
+                    time.sleep(delays[attempt])
+                    continue
+            except requests.HTTPError as exc:
+                last_exc = exc
+                code = exc.response.status_code if exc.response is not None else None
+                if code in (502, 503, 504) and attempt < len(delays):
+                    time.sleep(delays[attempt])
+                    continue
+                break
+            except Exception as exc:
+                last_exc = exc
+                break
+        exc: BaseException = last_exc if last_exc is not None else RuntimeError("STT request failed")
+        hint = ""
+        if isinstance(exc, requests.HTTPError) and exc.response is not None:
+            try:
+                hint = (exc.response.text or "")[:300]
+            except Exception:
+                hint = ""
+        logger.warning(
+            "HTTP STT request failed (%s). Endpoint=%s%s — using fallback if configured.",
+            exc,
+            self.endpoint,
+            f" body={hint!r}" if hint else "",
+        )
+        logger.debug("STT failure detail", exc_info=True)
+        if self.fallback_provider is not None:
+            logger.info("STT: falling back to secondary provider.")
+            return self.fallback_provider.transcribe(payload)
+        raise RuntimeError(
+            "STT transcription failed and no fallback is configured. "
+            "Set VOICE_STT_ENDPOINT or enable fallback_to_mock in voice config."
+        ) from exc

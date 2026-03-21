@@ -3,18 +3,99 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
-from typing import Any, Optional
-from urllib.parse import urljoin, urlparse
+from typing import Any
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
-from tenacity import Retrying, stop_after_attempt, wait_exponential
+from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential
 
 from ..config import NetworkConfig
 from ..models import BranchRecord
 
 logger = logging.getLogger(__name__)
+
+
+class TransientFetchError(Exception):
+    """Raised for connection/timeouts and HTTP 5xx so tenacity can retry without spinning on 404/403."""
+
+
+_CHARSET_RE = re.compile(r"charset=([\w._-]+)", re.IGNORECASE)
+
+
+def normalize_seed_url(url: str) -> str:
+    """
+    Normalize known-broken seed URL shapes before fetch and stable_id hashing.
+
+    ACBA occasionally had duplicated `/hy/individuals/` path segments in manifests;
+    the duplicate form often still responds 200 but should not be treated as canonical.
+    """
+
+    parsed = urlparse(url.strip())
+    if "acba.am" not in parsed.netloc.lower():
+        return url.strip()
+    path = parsed.path
+    while "/hy/individuals/hy/individuals/" in path:
+        path = path.replace("/hy/individuals/hy/individuals/", "/hy/individuals/", 1)
+    if path == parsed.path:
+        return url.strip()
+    fixed = urlunparse((parsed.scheme, parsed.netloc, path, parsed.params, parsed.query, parsed.fragment))
+    logger.debug("Normalized ACBA duplicate path segment url=%s -> %s", url.strip(), fixed)
+    return fixed
+
+
+def _charset_from_content_type(content_type: str) -> str | None:
+    m = _CHARSET_RE.search(content_type or "")
+    if not m:
+        return None
+    return m.group(1).strip().strip('"').strip("'")
+
+
+def _decode_html_bytes(raw: bytes, content_type: str, apparent: str | None, url: str) -> str:
+    """
+    Decode HTML bytes explicitly (do not rely on `response.text` alone).
+
+    Order: declared charset → UTF-8 strict → requests apparent_encoding → UTF-8 replace (last resort).
+    """
+
+    declared = _charset_from_content_type(content_type)
+    candidates: list[str] = []
+    if declared:
+        candidates.append(declared)
+    candidates.append("utf-8")
+    if apparent and apparent.lower() not in {c.lower() for c in candidates}:
+        candidates.append(apparent)
+    candidates.append("cp1256")
+    candidates.append("windows-1252")
+
+    last_err: UnicodeDecodeError | None = None
+    for enc in candidates:
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError) as e:
+            if isinstance(e, UnicodeDecodeError):
+                last_err = e
+            continue
+
+    text = raw.decode("utf-8", errors="replace")
+    logger.warning(
+        "HTML decode used UTF-8 replacement fallback url=%s last_error=%s", url, last_err
+    )
+    return text
+
+
+def _should_retry_exception(exc: BaseException) -> bool:
+    if isinstance(exc, TransientFetchError):
+        return True
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return True
+    if isinstance(exc, requests.exceptions.Timeout):
+        return True
+    if isinstance(exc, requests.exceptions.ChunkedEncodingError):
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -79,40 +160,72 @@ class RequestsHTMLFetcher:
         self._network = network
         self._session = requests.Session()
 
+    def _maybe_throttle(self) -> None:
+        delay = self._network.request_delay_seconds
+        if delay and delay > 0:
+            time.sleep(delay)
+
     def fetch(self, url: str) -> HTMLFetchResult:
         """
         Fetch HTML from `url`.
 
-        Retries are handled by `tenacity`; network config controls timeout, UA, and retry/backoff.
+        Retries transient failures only (timeouts, connection errors, HTTP 5xx).
+        Client errors (4xx) and bad content type fail immediately.
         """
 
         headers = {"User-Agent": self._network.user_agent, "Accept-Language": "hy,en;q=0.9,en;q=0.8"}
         timeout = self._network.timeout_seconds
 
         def _do_fetch() -> HTMLFetchResult:
-            resp = self._session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
-            resp.encoding = resp.encoding or "utf-8"
+            self._maybe_throttle()
+            try:
+                resp = self._session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+            except requests.RequestException as e:
+                raise TransientFetchError(str(e)) from e
+
             content_type = (resp.headers.get("Content-Type") or "").lower()
+            if resp.status_code >= 500:
+                raise TransientFetchError(f"HTTP {resp.status_code} for url={url}")
             if resp.status_code >= 400:
-                raise RuntimeError(f"HTTP fetch failed status={resp.status_code} url={url}")
+                raise RuntimeError(f"HTTP fetch failed status={resp.status_code} url={url} final_url={resp.url}")
             if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
                 raise RuntimeError(
                     f"Unexpected content type={content_type!r} for url={url}. "
                     "Expected HTML page."
                 )
-            if not resp.text or len(resp.text.strip()) < 50:
-                raise RuntimeError(f"Empty/too-short HTML response for url={url}")
+
+            apparent = getattr(resp, "apparent_encoding", None)
+            html = _decode_html_bytes(resp.content, content_type, apparent, url)
+            if not html or len(html.strip()) < 50:
+                raise RuntimeError(
+                    f"Empty/too-short HTML response for url={url} final_url={resp.url} status={resp.status_code}"
+                )
+            bad_chars = html.count("\ufffd")
+            if bad_chars > max(8, len(html) // 2000):
+                raise RuntimeError(
+                    f"Garbled HTML ({bad_chars} U+FFFD replacement chars) for url={url} final_url={resp.url}. "
+                    "Check charset / encoding."
+                )
+
+            logger.info(
+                "Fetched html url=%s final_url=%s status=%s content_type=%s chars=%d",
+                url,
+                resp.url,
+                resp.status_code,
+                (resp.headers.get("Content-Type") or "").split(";")[0].strip(),
+                len(html),
+            )
             return HTMLFetchResult(
                 url=url,
                 status_code=resp.status_code,
-                html=resp.text,
+                html=html,
                 final_url=resp.url,
             )
 
-        # Use Retrying so we can bind instance config values (no static decorator args).
         retrying = Retrying(
             reraise=True,
-            stop=stop_after_attempt(self._network.retries),
+            retry=retry_if_exception(_should_retry_exception),
+            stop=stop_after_attempt(max(1, self._network.retries)),
             wait=wait_exponential(
                 min=self._network.backoff_min_seconds, max=self._network.backoff_max_seconds
             ),
@@ -143,25 +256,43 @@ class RequestsHTMLFetcher:
         timeout = self._network.timeout_seconds
 
         def _do_fetch() -> tuple[int, dict[str, Any] | list[Any] | None]:
-            resp = self._session.request(
-                method=method.upper(),
-                url=url,
-                params=params,
-                json=json_body,
-                headers=merged_headers,
-                timeout=timeout,
-                allow_redirects=True,
-            )
+            self._maybe_throttle()
+            try:
+                resp = self._session.request(
+                    method=method.upper(),
+                    url=url,
+                    params=params,
+                    json=json_body,
+                    headers=merged_headers,
+                    timeout=timeout,
+                    allow_redirects=True,
+                )
+            except requests.RequestException as e:
+                raise TransientFetchError(str(e)) from e
+
+            if resp.status_code >= 500:
+                raise TransientFetchError(f"HTTP {resp.status_code} for url={url}")
+
             payload: dict[str, Any] | list[Any] | None = None
             try:
                 payload = resp.json()
             except ValueError:
                 payload = None
+
+            ct = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+            logger.debug(
+                "JSON request url=%s method=%s status=%s content_type=%s",
+                url,
+                method.upper(),
+                resp.status_code,
+                ct,
+            )
             return resp.status_code, payload
 
         retrying = Retrying(
             reraise=True,
-            stop=stop_after_attempt(self._network.retries),
+            retry=retry_if_exception(_should_retry_exception),
+            stop=stop_after_attempt(max(1, self._network.retries)),
             wait=wait_exponential(
                 min=self._network.backoff_min_seconds, max=self._network.backoff_max_seconds
             ),
@@ -227,10 +358,12 @@ def extract_same_domain_links(html: str, base_url: str) -> list[str]:
         if not href or href.startswith("#") or href.startswith("mailto:") or href.startswith("tel:"):
             continue
         absolute = urljoin(base_url, href)
+        absolute = normalize_seed_url(absolute)
         parsed = urlparse(absolute)
         if parsed.netloc != base.netloc:
             continue
         normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+        normalized = normalize_seed_url(normalized)
         if normalized in seen:
             continue
         seen.add(normalized)

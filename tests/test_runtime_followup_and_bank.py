@@ -9,6 +9,18 @@ def test_bank_detector_aliases() -> None:
     assert det.detect("իսկ Ամերիայի դեպքում?") is not None
 
 
+def test_bank_detector_detect_all_finds_multiple_banks_in_order() -> None:
+    det = BankDetector()
+    matches = det.detect_all("ACBA և Ameriabank ավանդ, հետո IDBank")
+    keys = [m.bank_key for m in matches]
+    assert keys == ["acba", "ameriabank", "idbank"]
+
+
+def test_bank_detector_detect_all_single_when_one_named() -> None:
+    det = BankDetector()
+    assert [m.bank_key for m in det.detect_all("միայն Ամերիաբանկի վարկ")] == ["ameriabank"]
+
+
 def test_followup_resolver_uses_last_context() -> None:
     resolver = FollowUpResolver()
     state = SessionState(session_id="s1", last_topic="deposit", last_bank="ameriabank")
@@ -23,6 +35,29 @@ def test_followup_resolver_city_carryover() -> None:
     out = resolver.resolve("իսկ այդ մասնաճյուղի հասցեն?", state)
     assert out.used_followup_context is True
     assert "գյումրի" in out.resolved_query.lower()
+
+
+def test_followup_resolver_interest_phrase_carries_deposit_topic() -> None:
+    resolver = FollowUpResolver()
+    state = SessionState(session_id="s4", last_topic="deposit", last_bank="ameriabank")
+    out = resolver.resolve("իսկ տոկոսադրույքը?", state)
+    assert out.used_followup_context is True
+    assert "ավանդ" in out.resolved_query
+
+
+def test_followup_resolver_does_not_inject_old_topic_when_user_names_new_product() -> None:
+    resolver = FollowUpResolver()
+    state = SessionState(session_id="s5", last_topic="deposit", last_bank="acba")
+    out = resolver.resolve("իսկ վարկերը?", state)
+    assert out.used_followup_context is True
+    assert not out.resolved_query.strip().lower().startswith("ավանդ")
+
+
+def test_followup_resolver_all_banks_phrase_drops_last_bank_prefix() -> None:
+    resolver = FollowUpResolver()
+    state = SessionState(session_id="s6", last_topic="deposit", last_bank="acba")
+    out = resolver.resolve("իսկ բոլոր բանկերում ինչ ավանդներ կան", state)
+    assert "acba" not in out.resolved_query.lower()
 
 
 def test_followup_resolver_bank_pivot_does_not_reinject_previous_bank() -> None:

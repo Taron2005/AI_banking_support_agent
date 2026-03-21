@@ -1,4 +1,5 @@
 @echo off
+REM Canonical voice-agent CLI and order: README §7b / §9 (prefer: python -m voice_ai_banking_support_agent.cli --project-root . ...).
 setlocal
 cd /d "%~dp0.."
 if not exist ".venv\Scripts\python.exe" (
@@ -24,7 +25,7 @@ set "VC=voice_config.yaml"
 if not exist "%VC%" set "VC=voice_config.example.yaml"
 
 call .venv\Scripts\activate.bat
-python cli.py --config validation_manifest_update_hy.yaml voice-agent ^
+python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml voice-agent ^
   --index-name hy_model_index ^
   --runtime-config runtime_config.yaml ^
   --llm-config llm_config.yaml ^

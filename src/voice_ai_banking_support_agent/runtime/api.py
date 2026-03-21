@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from ..config import load_config
 from .factory import build_runtime_orchestrator
@@ -40,8 +43,14 @@ def build_app(
         raise RuntimeError("FastAPI is not installed. Install `fastapi` and `uvicorn`.") from e
 
     root = Path(project_root).resolve()
-    # Note: load `.env` in the process entrypoint (e.g. run_runtime_api.py, voice CLI), not here,
-    # so tests and library imports are not polluted by a developer's environment.
+    # Load repo-root `.env` before LLM settings so GEMINI_API_KEY is visible regardless of entrypoint
+    # (uvicorn module path, IDE "Run", tests with TestClient). `override=False` keeps real env vars.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(root / ".env", override=False)
+    except ImportError:
+        pass
 
     cfg = load_config(
         project_root=root,
@@ -57,6 +66,20 @@ def build_app(
     orchestrator = build_runtime_orchestrator(
         app_config=cfg, runtime_settings=runtime_settings, llm_settings=llm_settings
     )
+    _llm_ok = llm_settings.is_live_llm_configured()
+    logger.info(
+        "Runtime ready: answer.backend=%s llm_provider=%s llm_model=%s llm_configured=%s index_dir=%s",
+        runtime_settings.answer.backend,
+        llm_settings.provider,
+        llm_settings.model,
+        _llm_ok,
+        cfg.index_dir,
+    )
+    if runtime_settings.answer.backend == "llm" and llm_settings.provider == "gemini" and not _llm_ok:
+        logger.error(
+            "answer.backend is llm but Gemini is not configured (set GEMINI_API_KEY or GOOGLE_API_KEY in .env). "
+            "Every answered turn will use explicit extractive fallback until a key is set."
+        )
     sessions = SessionStateStore()
     app = FastAPI(title="Voice AI Banking Runtime API", version="0.1.0")
     app.add_middleware(
@@ -74,15 +97,22 @@ def build_app(
     @app.get("/ready")
     def ready():
         lk = livekit_env_config()
+        llm_cfg_path = str(llm_path.resolve()) if llm_path else None
         return {
             "status": "ok",
-            "groq_configured": bool(os.getenv("GROQ_API_KEY", "").strip()),
+            "llm_configured": _llm_ok,
             "livekit_api_configured": bool(
                 os.getenv("LIVEKIT_API_KEY", "").strip() and os.getenv("LIVEKIT_API_SECRET", "").strip()
             ),
             "livekit_url": lk["livekit_url"],
             "livekit_room": lk["room"],
             "default_index": "hy_model_index",
+            "answer_backend": runtime_settings.answer.backend,
+            "llm_provider": llm_settings.provider,
+            "llm_model": llm_settings.model,
+            "llm_config_path": llm_cfg_path,
+            "index_dir": str(cfg.index_dir.resolve()),
+            "embedding_model_name": cfg.embedding_model_name,
         }
 
     @app.get("/")
@@ -129,6 +159,9 @@ def build_app(
             ),
             state,
         )
-        return resp.model_dump()
+        payload = resp.model_dump()
+        payload["llm_provider"] = llm_settings.provider
+        payload["llm_model"] = llm_settings.model
+        return payload
 
     return app

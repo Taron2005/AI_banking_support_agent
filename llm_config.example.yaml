@@ -1,0 +1,20 @@
+# Copy patterns into llm_config.yaml (repo root).
+#
+# Production (default):
+#   provider: gemini
+#   model: gemini-2.0-flash
+#   .env: GEMINI_API_KEY=...
+#
+# Higher-quality Armenian (slower / quota):
+#   model: gemini-1.5-pro
+#
+# Tests / no API:
+#   provider: mock
+
+provider: gemini
+endpoint: null
+api_key: null
+model: gemini-2.0-flash
+timeout_seconds: 120
+temperature: 0.06
+max_tokens: 8192

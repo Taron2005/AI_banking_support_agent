@@ -1,7 +1,7 @@
 import io
 import wave
 
-from voice_ai_banking_support_agent.voice.stt import MockSTTProvider
+from voice_ai_banking_support_agent.voice.stt import MOCK_STT_PLACEHOLDER, MockSTTProvider, is_mock_stt_placeholder
 from voice_ai_banking_support_agent.voice.tts import MockTTSProvider
 from voice_ai_banking_support_agent.voice.voice_models import STTInput
 
@@ -20,6 +20,12 @@ def test_mock_tts_returns_bytes() -> None:
     with wave.open(io.BytesIO(out.audio), "rb") as wf:
         assert wf.getnchannels() == 1
         assert wf.getsampwidth() == 2
+
+
+def test_is_mock_stt_placeholder() -> None:
+    assert is_mock_stt_placeholder(MOCK_STT_PLACEHOLDER)
+    assert is_mock_stt_placeholder(f"  {MOCK_STT_PLACEHOLDER} ")
+    assert not is_mock_stt_placeholder("hello")
 
 
 def test_mock_stt_non_text_fallback() -> None:

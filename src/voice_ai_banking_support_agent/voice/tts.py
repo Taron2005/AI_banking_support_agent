@@ -98,12 +98,15 @@ class HTTPTTSProvider:
             "voice": _s(self.voice_name, "default"),
             "format": _s(self.output_encoding, "wav"),
         }
+        read_to = float(self.timeout_seconds)
+        connect_to = min(20.0, max(5.0, read_to * 0.15))
+        timeout = (connect_to, read_to)
         try:
             resp = requests.post(
                 self.endpoint,
                 headers=headers,
                 json=payload,
-                timeout=self.timeout_seconds,
+                timeout=timeout,
             )
             resp.raise_for_status()
             ctype = (resp.headers.get("content-type") or "").lower()

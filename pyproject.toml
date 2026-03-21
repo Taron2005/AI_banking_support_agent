@@ -14,12 +14,14 @@ dependencies = [
   "tenacity>=9.0.0",
   "sentence-transformers>=3.0.1",
   "faiss-cpu>=1.8.0",
+  "rank-bm25>=0.2.2",
   "numpy>=1.26.0",
   "tqdm>=4.67.0",
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
   "python-dotenv>=1.0.0",
   "livekit-api>=0.8.0",
+  "google-generativeai>=0.8.0",
 ]
 
 [build-system]
@@ -47,6 +49,9 @@ voice_local_servers = [
 minversion = "8.0"
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+    "slow: loads FAISS + embeddings (session e2e; run with pytest -m slow)",
+]
 
 [tool.ruff]
 line-length = 100

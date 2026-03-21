@@ -1,4 +1,6 @@
 schema_version: "1"
+# Corpus language is Armenian (hy) per bank.language. Prefer non-/en/ paths when the same page exists
+# without /en/ (e.g. Ameriabank `ameriabank.am/personal/...` defaults to hy). English-only pages are kept only when no hy equivalent was found.
 banks:
   - bank_key: "acba"
     bank_name: "ACBA Bank"
@@ -7,6 +9,8 @@ banks:
       urls:
         - "https://www.acba.am/hy/individuals/loans"
         - "https://www.acba.am/hy/individuals/loans/credit-lines"
+        - "https://www.acba.am/hy/individuals/loans/consumer-credits"
+        - "https://www.acba.am/hy/individuals/loans/mortgage/purchase-mortgage"
         - "https://www.acba.am/hy/business/get-a-loan"
     deposits:
       urls:
@@ -27,25 +31,21 @@ banks:
         - "https://ameriabank.am/personal/loans"
         - "https://ameriabank.am/personal/loans/consumer-loans/consumer-loans"
         - "https://ameriabank.am/personal/loans/consumer-loans/credit-line"
-        - "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft"
-        - "https://ameriabank.am/en/personal/loans/car-loans"
-        - "https://ameriabank.am/en/personal/loans/car-loan/primary"
-        - "https://ameriabank.am/en/personal/loans/car-loan/secondary-market"
-        - "https://ameriabank.am/en/personal/loans/car-loan/without-bank-visit"
-        - "https://ameriabank.am/en/personal/loans/other-loans/investment-loan"
+        - "https://ameriabank.am/personal/loans/consumer-loans/overdraft"
+        - "https://ameriabank.am/personal/loans/car-loans"
+        - "https://ameriabank.am/personal/loans/car-loan/primary"
+        - "https://ameriabank.am/personal/loans/other-loans/investment-loan"
     deposits:
       urls:
         - "https://ameriabank.am/personal/saving/deposits/see-all"
         - "https://ameriabank.am/personal/saving/deposits/ameria-deposit"
         - "https://ameriabank.am/personal/saving/deposits/cumulative-deposit"
-        - "https://ameriabank.am/en/personal/savings/deposits/leaflets"
-        - "https://ameriabank.am/Portals/0/files/Personal/Leaflet_deposit_amd_eng.pdf"
+        # HTML leaflets index (replaces PDF). Text is often EN-heavy; `language` metadata may be non_hy.
+        - "https://ameriabank.am/personal/savings/deposits/leaflets"
     branches:
       urls:
+        # Primary hy service network listing (TabId/language query variants collapse here).
         - "https://ameriabank.am/service-network"
-        - "https://ameriabank.am/service-network?TabId=3420&language=hy-AM"
-        - "https://ameriabank.am/en/service-network"
-        - "https://ameriabank.am/en/contact-us"
 
   - bank_key: "idbank"
     bank_name: "IDBank"
@@ -53,13 +53,15 @@ banks:
     credits:
       urls:
         - "https://idbank.am/credits/"
-        - "https://idbank.am/en/credits/loans-without-collateral/credit-lines/"
+        - "https://idbank.am/credits/loans-without-collateral/"
+        - "https://idbank.am/credits/loans-without-collateral/credit-lines/"
+        - "https://idbank.am/credits/collateral-loans/consumer-loan/"
     deposits:
       urls:
         - "https://idbank.am/deposits/"
-        - "https://idbank.am/en/deposits/"
-        - "https://idbank.am/en/deposits/deposit_safe/noreplenish/"
-        - "https://idbank.am/en/deposits/demand/demand/"
+        - "https://idbank.am/deposits/deposit_safe/replenish/"
+        - "https://idbank.am/deposits/deposit_safe/noreplenish/"
+        - "https://idbank.am/deposits/demand/demand/"
     branches:
       urls:
         - "https://idbank.am/information/about/branches-and-atms/branches/"

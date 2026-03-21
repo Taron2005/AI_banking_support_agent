@@ -29,7 +29,13 @@ def test_health_and_root_with_full_app() -> None:
     assert r3.status_code == 200
     body = r3.json()
     assert body.get("status") == "ok"
-    assert "groq_configured" in body
+    assert "llm_configured" in body
+    assert body.get("llm_model")
+    assert body.get("llm_provider") in ("gemini", "mock")
+    assert body.get("answer_backend") in ("llm", "extractive")
+    assert body.get("index_dir")
+    assert body.get("embedding_model_name")
+    assert "llm_config_path" in body
     r4 = client.get("/api/livekit/config")
     assert r4.status_code == 200
     assert "livekit_url" in r4.json()

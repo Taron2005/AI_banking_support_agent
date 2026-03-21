@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .bank_scope import query_implies_all_banks
 from .models import FollowUpResolution, SessionState
 
 
@@ -35,6 +36,7 @@ class FollowUpResolver:
             "վարկ",
             "ավանդ",
             "մասնաճյուղ",
+            "մասնաճյուղեր",
             "սպառողական",
             "loan",
             "loans",
@@ -42,6 +44,7 @@ class FollowUpResolver:
             "deposit",
             "branch",
             "տոկոս",
+            "տոկոսադրույք",
             "interest",
             "հասցե",
             "address",
@@ -57,13 +60,47 @@ class FollowUpResolver:
                     return True
         return False
 
+    def _query_targets_different_topic_than_state(self, lower: str, last_topic: str) -> bool:
+        """True when the user names another product line than the one carried in session (e.g. switches to loans)."""
+
+        credit = ("վարկ", "վարկեր", "սպառողական", "loan", "loans", "mortgage", "credit")
+        deposit = ("ավանդ", "deposit", "deposits", "խնայող")
+        branch = ("մասնաճյուղ", "մասնաճյուղեր", "branch", "atm", "բանկոմատ", "հասցե", "where", "address", "որտե")
+        has_c = any(t in lower for t in credit)
+        has_d = any(t in lower for t in deposit)
+        has_b = any(t in lower for t in branch)
+        if last_topic == "deposit":
+            return has_c and not has_d
+        if last_topic == "credit":
+            return has_d and not has_c
+        if last_topic == "branch":
+            return (has_c or has_d) and not has_b
+        return False
+
     def resolve(self, query: str, state: SessionState) -> FollowUpResolution:
         q = query.strip()
         lower = q.lower()
         tokens = q.split()
         is_short = len(tokens) <= self._short_query_max_tokens
         is_followup_marker = any(lower.startswith(marker) for marker in self._followup_markers)
-        has_reference_hint = any(h in lower for h in ("դեպքում", "այդ", "that", "also", "նույն", "same"))
+        has_reference_hint = any(
+            h in lower
+            for h in (
+                "դեպքում",
+                "այդ",
+                "that",
+                "also",
+                "նույն",
+                "same",
+                "էլ",
+                "այլ",
+                "ուրիշ",
+                "նույնիսկ",
+                "այնպես",
+                "հետո",
+                "նախորդ",
+            )
+        )
         is_followup = is_followup_marker or (is_short and has_reference_hint)
 
         # Short bank pivot: "Ameriabank" / "ամերիա" after a prior topic turn.
@@ -91,12 +128,17 @@ class FollowUpResolver:
             and state.last_bank.lower() not in lower
             and not explicit_bank_context
             and not new_bank_mentioned
+            and not query_implies_all_banks(lower)
         ):
             prefix_parts.append(state.last_bank)
             merged_fields.append("last_bank")
         if state.last_topic:
             topic_hint = {"credit": "վարկ", "deposit": "ավանդ", "branch": "մասնաճյուղ"}[state.last_topic]
-            if topic_hint not in lower and state.last_topic not in lower:
+            if (
+                not self._query_targets_different_topic_than_state(lower, state.last_topic)
+                and topic_hint not in lower
+                and state.last_topic not in lower
+            ):
                 prefix_parts.append(topic_hint)
                 merged_fields.append("last_topic")
         query_has_city = any(city in lower for city in self._city_terms)

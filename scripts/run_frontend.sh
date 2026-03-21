@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Canonical frontend: README §7b step 9 / §10 (API must be running separately).
 set -euo pipefail
 cd "$(dirname "$0")/../frontend-react"
 if [[ ! -d node_modules ]]; then

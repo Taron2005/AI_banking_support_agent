@@ -128,25 +128,29 @@ def main(argv: list[str] | None = None) -> None:
         )
         query_embedding: np.ndarray = embedder.embed_query(args.query)
 
+        bank_keys = frozenset({args.bank.strip().lower()}) if args.bank else None
         results = store.search(
             query_embedding=query_embedding,
             top_k=args.top_k,
             topic_filter=topic_filter,
-            bank_filter=args.bank,
+            bank_keys=bank_keys,
         )
 
         for i, r in enumerate(results, start=1):
             doc = r.doc
             print(f"#{i} score={r.score:.4f}")
-            print(f"  bank={doc.bank_name} ({doc.bank_key}) topic={doc.topic} chunk_id={doc.chunk_id}")
+            print(
+                f"  bank={_safe_console_text(doc.bank_name)} ({doc.bank_key}) "
+                f"topic={doc.topic} chunk_id={doc.chunk_id}"
+            )
             print(f"  source_url={doc.source_url}")
-            print(f"  page_title={doc.page_title}")
-            print(f"  section_title={doc.section_title}")
+            print(f"  page_title={_safe_console_text(doc.page_title)}")
+            print(f"  section_title={_safe_console_text(doc.section_title)}")
             # Truncate long chunk output for CLI readability.
             cleaned = doc.cleaned_text
             if len(cleaned) > 600:
                 cleaned = cleaned[:600] + "..."
-            print(f"  cleaned_text={cleaned}")
+            print(f"  cleaned_text={_safe_console_text(cleaned)}")
             print("")
 
         if not results:

@@ -1,30 +1,35 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from dataclasses import dataclass
 from typing import Protocol
 
-import requests
-
 from .llm_config import LLMSettings
+from .rag_prompts import RAG_ANSWER_SYSTEM_MESSAGE_EN
 
 logger = logging.getLogger(__name__)
 
-# Groq uses OpenAI-compatible /v1/chat/completions; system message enforces evidence-only answers.
-LLM_SYSTEM_ARMENIAN_EVIDENCE_ONLY = (
-    "Դու բանկային աջակցության օգնական ես։ Պատասխանիր միայն «Ապացույցներ» բլոկի տեքստից։ "
-    "Մի օգտագործիր արտաքին գիտելիք կամ ընդհանուր գիտելիք բանկերի մասին։ "
-    "Մի կրկնիր աղբյուրի URL-ները կամ ցուցակների չափազանց մեծ մեջբերումները։ "
-    "Գրիր հայերեն, բնական և հակիրճ (2–6 կարճ նախադասություն), միայն հարցին վերաբերող փաստերով։ "
-    "Եթե օգտվողի հարցը հայերեն է՝ պահպանիր նույն լեզվի ոճը, առանց թարգմանելու ապացույցի մեջբերումները։ "
-    "Եթե ապացույցը բավարար չէ՝ մեկ նախադասությամբ նշիր դա, առանց գուշակելու։"
-)
-
-GROQ_DEFAULT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+# English system instruction (canonical text in rag_prompts.RAG_ANSWER_SYSTEM_MESSAGE_EN).
+RAG_SYSTEM_MESSAGE = RAG_ANSWER_SYSTEM_MESSAGE_EN
 
 
 class LLMClient(Protocol):
     def generate(self, prompt: str) -> str: ...
+
+
+def _import_google_genai():
+    """Lazy import so config/tests can load without google-generativeai until first LLM call."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            import google.generativeai as genai
+        from google.api_core import exceptions as google_exceptions
+    except ImportError as e:
+        raise RuntimeError(
+            "google-generativeai is not installed. Install project dependencies: pip install -r requirements.txt"
+        ) from e
+    return genai, google_exceptions
 
 
 @dataclass
@@ -39,43 +44,69 @@ class MockLLMClient:
 
 
 @dataclass
-class GroqChatClient:
-    """Groq chat via OpenAI-compatible HTTP API."""
+class GeminiChatClient:
+    """Google Gemini (Generative Language API) for grounded Armenian synthesis."""
 
-    endpoint: str
-    api_key: str | None
+    api_key: str
     model: str
     timeout_seconds: float
     temperature: float
-    max_tokens: int = 512
-    system_message: str = LLM_SYSTEM_ARMENIAN_EVIDENCE_ONLY
+    max_output_tokens: int
+    system_message: str = RAG_SYSTEM_MESSAGE
 
     def generate(self, prompt: str) -> str:
-        if not self.endpoint:
-            raise RuntimeError("Groq endpoint is not configured.")
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        body = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": self.system_message},
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-        }
-        resp = requests.post(self.endpoint, headers=headers, json=body, timeout=self.timeout_seconds)
-        resp.raise_for_status()
-        payload = resp.json()
-        out = (
-            payload.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
+        key = (self.api_key or "").strip()
+        if not key:
+            raise RuntimeError("gemini_missing_api_key")
+
+        genai, google_exceptions = _import_google_genai()
+        genai.configure(api_key=key)
+        model = genai.GenerativeModel(
+            self.model,
+            system_instruction=self.system_message,
         )
-        if not isinstance(out, str) or not out.strip():
-            raise RuntimeError("Groq response content is empty.")
-        return out.strip()
+        gcfg = genai.types.GenerationConfig(
+            temperature=float(self.temperature),
+            max_output_tokens=int(self.max_output_tokens),
+        )
+
+        to = int(self.timeout_seconds) if self.timeout_seconds else 120
+        try:
+            try:
+                response = model.generate_content(
+                    prompt,
+                    generation_config=gcfg,
+                    request_options={"timeout": to},
+                )
+            except TypeError:
+                # Older google-generativeai builds may not accept request_options here.
+                response = model.generate_content(prompt, generation_config=gcfg)
+        except google_exceptions.ResourceExhausted as e:
+            logger.error("Gemini quota/rate limit: %s", e)
+            raise RuntimeError("gemini_resource_exhausted") from e
+        except google_exceptions.GoogleAPIError as e:
+            logger.error("Gemini API error: %s", e)
+            raise RuntimeError(f"gemini_api_error:{type(e).__name__}") from e
+        except Exception as e:
+            logger.exception("Gemini generate_content failed")
+            raise RuntimeError(f"gemini_error:{type(e).__name__}") from e
+
+        if not response.candidates:
+            pf = getattr(response, "prompt_feedback", None)
+            br = getattr(pf, "block_reason", None) if pf is not None else None
+            logger.warning("Gemini returned no candidates block_reason=%s", br)
+            raise RuntimeError(f"gemini_blocked:{br}")
+
+        try:
+            text = (response.text or "").strip()
+        except Exception:
+            text = ""
+        if not text:
+            fr = getattr(response.candidates[0], "finish_reason", None)
+            logger.warning("Gemini returned empty text finish_reason=%s", fr)
+            raise RuntimeError(f"gemini_empty_response:{fr}")
+
+        return text
 
 
 def build_llm_client(settings: LLMSettings | None) -> LLMClient | None:
@@ -83,18 +114,36 @@ def build_llm_client(settings: LLMSettings | None) -> LLMClient | None:
         return None
     if settings.provider == "mock":
         return MockLLMClient()
-    if settings.provider == "groq":
-        import os
 
-        key = settings.api_key or os.getenv("GROQ_API_KEY")
+    if settings.provider == "gemini":
+        key = settings.resolved_api_key()
         if not key:
-            logger.warning("Groq provider selected but no api_key or GROQ_API_KEY; LLM calls will fail.")
-        return GroqChatClient(
-            endpoint=settings.endpoint or GROQ_DEFAULT_ENDPOINT,
+            logger.error(
+                "Gemini is configured (llm_config / LLM_PROVIDER) but no API key was found. "
+                "Set GEMINI_API_KEY or GOOGLE_API_KEY (or LLM_API_KEY) in .env. "
+                "Answers will use explicit extractive fallback until a key is set."
+            )
+            return None
+        try:
+            _import_google_genai()
+        except RuntimeError as e:
+            logger.error("%s", e)
+            return None
+        client = GeminiChatClient(
             api_key=key,
-            model=settings.model,
-            timeout_seconds=settings.timeout_seconds,
-            temperature=settings.temperature,
+            model=(settings.model or "gemini-2.0-flash").strip(),
+            timeout_seconds=float(settings.timeout_seconds),
+            temperature=float(settings.temperature),
+            max_output_tokens=int(settings.max_tokens),
+            system_message=RAG_SYSTEM_MESSAGE,
         )
-    logger.warning("Unknown LLM provider %s; expected mock or groq.", getattr(settings, "provider", None))
+        logger.info(
+            "LLM client ready: provider=gemini model=%s max_output_tokens=%s timeout_s=%s",
+            client.model,
+            client.max_output_tokens,
+            client.timeout_seconds,
+        )
+        return client
+
+    logger.warning("Unknown LLM provider %s; expected gemini or mock.", getattr(settings, "provider", None))
     return None
