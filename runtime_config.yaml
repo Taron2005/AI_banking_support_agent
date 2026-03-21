@@ -4,9 +4,10 @@ topic_classifier:
   weak_term_weight: 0.75
 
 followup:
-  short_query_max_tokens: 8
+  short_query_max_tokens: 10
   markers:
     - "իսկ"
+    - "նաև"
     - "and"
     - "what about"
     - "and for"

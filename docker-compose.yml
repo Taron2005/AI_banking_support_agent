@@ -1,15 +1,17 @@
-# Self-hosted LiveKit (dev). API key/secret pair: devkey / secret (same as `livekit-server --dev`).
+# Self-hosted LiveKit for local dev.
+# Config: docker/livekit.yaml (keys devkey/secret, ICE-friendly for host browsers).
 # Start: docker compose up -d
-# URL: ws://127.0.0.1:7880
-#
-# See README "Local End-to-End Run" for token generation.
+# Signaling: ws://127.0.0.1:7880 — JWT from GET /api/livekit/token on the banking API.
+# UDP: rtc port_range 50000-50050 (Windows Docker + mux-only UDP often breaks WebRTC).
 
 services:
   livekit:
     image: livekit/livekit-server:latest
-    command: ["--dev", "--bind", "0.0.0.0"]
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./docker/livekit.yaml:/etc/livekit.yaml:ro
     ports:
       - "7880:7880"
       - "7881:7881"
-      - "7882:7882/udp"
+      - "50000-50050:50000-50050/udp"
     restart: unless-stopped

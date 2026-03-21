@@ -8,7 +8,7 @@ from voice_ai_banking_support_agent.runtime.llm_config import LLMSettings, load_
 
 def test_load_llm_settings_defaults_when_missing(tmp_path: Path) -> None:
     cfg = load_llm_settings(tmp_path / "missing.yaml")
-    assert cfg.provider == "mock"
+    assert cfg.provider == "groq"
     assert cfg.model
 
 

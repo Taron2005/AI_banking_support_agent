@@ -7,6 +7,8 @@ __pycache__/
 venv/
 ENV/
 .env
+# Local copy of voice settings (template: voice_config.example.yaml)
+voice_config.yaml
 *.egg-info/
 .eggs/
 dist/

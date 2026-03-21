@@ -2,10 +2,11 @@ from voice_ai_banking_support_agent.voice.factory import build_voice_dependencie
 from voice_ai_banking_support_agent.voice.voice_config import VoiceConfig
 
 
-def test_voice_factory_builds_mock_dependencies() -> None:
-    deps = build_voice_dependencies(VoiceConfig())
-    assert deps.stt is not None
-    assert deps.tts is not None
+def test_voice_factory_falls_back_to_mock_without_endpoints() -> None:
+    cfg = VoiceConfig.model_validate({"livekit": {"url": "ws://127.0.0.1:7880"}})
+    deps = build_voice_dependencies(cfg)
+    assert deps.stt.__class__.__name__ == "MockSTTProvider"
+    assert deps.tts.__class__.__name__ == "MockTTSProvider"
 
 
 def test_voice_factory_builds_http_providers() -> None:

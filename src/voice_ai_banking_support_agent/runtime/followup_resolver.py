@@ -79,6 +79,9 @@ class FollowUpResolver:
         if not is_followup:
             return FollowUpResolution(resolved_query=q)
 
+        if is_followup and not (state.last_topic or state.last_bank):
+            return FollowUpResolution(resolved_query=q, needs_clarification=True)
+
         merged_fields: list[str] = []
         prefix_parts: list[str] = []
         explicit_bank_context = " դեպքում" in lower or "for " in lower or "about " in lower

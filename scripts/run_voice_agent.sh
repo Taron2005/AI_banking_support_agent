@@ -5,10 +5,15 @@ if [[ ! -f .venv/bin/python ]]; then
   echo "Create a venv first: bash scripts/setup_env.sh"
   exit 1
 fi
+TOKEN_URL="${VOICE_AGENT_TOKEN_URL:-http://127.0.0.1:8000/api/livekit/token?identity=banking-support-agent}"
 if [[ -z "${LIVEKIT_TOKEN:-}" ]]; then
-  echo "LIVEKIT_TOKEN is not set. Generate one:"
+  echo "Fetching LiveKit JWT from backend..."
+  LIVEKIT_TOKEN="$(.venv/bin/python -c "import json,urllib.request; u='${TOKEN_URL}'; print(json.load(urllib.request.urlopen(u))['token'])")"
+  export LIVEKIT_TOKEN
+fi
+if [[ -z "${LIVEKIT_TOKEN:-}" ]]; then
+  echo "Could not obtain LIVEKIT_TOKEN. Start the API or run:"
   echo "  python scripts/generate_livekit_token.py --identity banking-support-agent"
-  echo "Then: export LIVEKIT_TOKEN='<paste jwt>'"
   exit 1
 fi
 source .venv/bin/activate

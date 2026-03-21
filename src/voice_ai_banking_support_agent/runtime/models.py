@@ -29,6 +29,7 @@ class FollowUpResolution(BaseModel):
     resolved_query: str
     used_followup_context: bool = False
     merged_fields: list[str] = Field(default_factory=list)
+    needs_clarification: bool = False
 
 
 class RetrievedChunk(BaseModel):

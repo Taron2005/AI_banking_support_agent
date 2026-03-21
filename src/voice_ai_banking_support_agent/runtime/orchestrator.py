@@ -55,6 +55,19 @@ class RuntimeOrchestrator:
         followup = self._followup_resolver.resolve(normalized, state)
         effective_query = followup.resolved_query
         trace.append(f"followup.used={followup.used_followup_context} merged={','.join(followup.merged_fields)}")
+        if followup.needs_clarification:
+            hint = (
+                "Խնդրում եմ նախորդ հարցից հետո կրկնել հարցը ավելի կոնկրետ՝ նշելով բանկը և թեման "
+                "(վարկ, ավանդ կամ մասնաճյուղ)։"
+            )
+            self._update_state(state, normalized, "", None, None)
+            return RuntimeResponse(
+                answer_text=hint,
+                status="clarify",
+                refusal_reason=None,
+                detected_topic=None,
+                decision_trace=trace if req.verbose else [],
+            )
         topic = self._topic_classifier.classify(effective_query)
         trace.append(f"topic={topic.label} conf={topic.confidence:.2f} reason={topic.reason}")
 

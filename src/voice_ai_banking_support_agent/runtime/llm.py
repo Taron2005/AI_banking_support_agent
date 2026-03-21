@@ -12,10 +12,12 @@ logger = logging.getLogger(__name__)
 
 # Groq uses OpenAI-compatible /v1/chat/completions; system message enforces evidence-only answers.
 LLM_SYSTEM_ARMENIAN_EVIDENCE_ONLY = (
-    "Դու բանկային աջակցության օգնական ես։ Պատասխանիր միայն օգտատիրոջ հաղորդագրության մեջ տրված "
-    "«Ապացույցներ» բլոկից։ Մի ավելացնիր թվեր, տոկոսադրույքներ կամ փաստեր, որոնք ապացույցում չկան։ "
-    "Եթե ապացույցը բավարար չէ՝ գրիր կարճ, որ տվյալները բավարար չեն, առանց գուշակելու։ "
-    "Պատասխանիր հայերեն, ամբողջական նախադասություններով, առանց կիսատ մտքերի։"
+    "Դու բանկային աջակցության օգնական ես։ Պատասխանիր միայն «Ապացույցներ» բլոկի տեքստից։ "
+    "Մի օգտագործիր արտաքին գիտելիք կամ ընդհանուր գիտելիք բանկերի մասին։ "
+    "Մի կրկնիր աղբյուրի URL-ները կամ ցուցակների չափազանց մեծ մեջբերումները։ "
+    "Գրիր հայերեն, բնական և հակիրճ (2–6 կարճ նախադասություն), միայն հարցին վերաբերող փաստերով։ "
+    "Եթե օգտվողի հարցը հայերեն է՝ պահպանիր նույն լեզվի ոճը, առանց թարգմանելու ապացույցի մեջբերումները։ "
+    "Եթե ապացույցը բավարար չէ՝ մեկ նախադասությամբ նշիր դա, առանց գուշակելու։"
 )
 
 GROQ_DEFAULT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
@@ -45,6 +47,7 @@ class GroqChatClient:
     model: str
     timeout_seconds: float
     temperature: float
+    max_tokens: int = 640
     system_message: str = LLM_SYSTEM_ARMENIAN_EVIDENCE_ONLY
 
     def generate(self, prompt: str) -> str:
@@ -60,6 +63,7 @@ class GroqChatClient:
                 {"role": "user", "content": prompt},
             ],
             "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
         }
         resp = requests.post(self.endpoint, headers=headers, json=body, timeout=self.timeout_seconds)
         resp.raise_for_status()

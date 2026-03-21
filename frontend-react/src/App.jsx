@@ -1,149 +1,74 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Room, RoomEvent, createLocalAudioTrack } from "livekit-client";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const VOICE_DISCONNECTED = "disconnected";
+const VOICE_IDLE = "idle";
+const VOICE_LISTENING = "listening";
+const VOICE_PROCESSING = "processing";
+const VOICE_SPEAKING = "speaking";
+const VOICE_ERROR = "error";
 
-const shell = {
-  minHeight: "100vh",
-  background: "#0f1419",
-  color: "#e7e9ea",
-  fontFamily:
-    'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  display: "flex",
-  flexDirection: "column",
-};
+function voicePhaseLabel(phase) {
+  switch (phase) {
+    case VOICE_DISCONNECTED:
+      return "Disconnected";
+    case VOICE_IDLE:
+      return "Ready — tap mic to speak";
+    case VOICE_LISTENING:
+      return "Listening… tap again to send";
+    case VOICE_PROCESSING:
+      return "Thinking…";
+    case VOICE_SPEAKING:
+      return "Assistant speaking…";
+    case VOICE_ERROR:
+      return "Error";
+    default:
+      return "…";
+  }
+}
 
-const header = {
-  padding: "12px 20px",
-  borderBottom: "1px solid #2f3336",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? "" : "http://127.0.0.1:8000");
+const LIVEKIT_IDENTITY = import.meta.env.VITE_LIVEKIT_IDENTITY || "web-user-1";
 
-const main = {
-  flex: 1,
-  display: "flex",
-  maxWidth: 900,
-  width: "100%",
-  margin: "0 auto",
-  flexDirection: "column",
-  padding: "16px 20px 100px",
-  overflowY: "auto",
-};
+function normalizeLivekitWsUrl(url) {
+  const u = (url || "").trim().replace(/\/+$/, "");
+  if (!u) return u;
+  const lower = u.toLowerCase();
+  if (lower.startsWith("https://")) return `wss://${u.slice(8)}`;
+  if (lower.startsWith("http://")) return `ws://${u.slice(7)}`;
+  return u;
+}
 
-const bubbleUser = {
-  alignSelf: "flex-end",
-  maxWidth: "85%",
-  background: "#1d9bf0",
-  color: "#fff",
-  padding: "10px 14px",
-  borderRadius: 16,
-  borderBottomRightRadius: 4,
-  marginBottom: 12,
-  whiteSpace: "pre-wrap",
-  lineHeight: 1.45,
-};
-
-const bubbleAsst = {
-  alignSelf: "flex-start",
-  maxWidth: "90%",
-  background: "#202327",
-  padding: "10px 14px",
-  borderRadius: 16,
-  borderBottomLeftRadius: 4,
-  marginBottom: 12,
-  whiteSpace: "pre-wrap",
-  lineHeight: 1.45,
-  border: "1px solid #2f3336",
-};
-
-const meta = {
-  fontSize: 12,
-  opacity: 0.65,
-  marginTop: 6,
-};
-
-const composer = {
-  position: "fixed",
-  bottom: 0,
-  left: 0,
-  right: 0,
-  padding: "12px 16px 20px",
-  background: "linear-gradient(transparent, #0f1419 25%)",
-  borderTop: "1px solid #2f3336",
-};
-
-const composerInner = {
-  maxWidth: 900,
-  margin: "0 auto",
-  display: "flex",
-  gap: 8,
-  alignItems: "flex-end",
-};
-
-const inputStyle = {
-  flex: 1,
-  minHeight: 48,
-  maxHeight: 160,
-  padding: "12px 14px",
-  borderRadius: 12,
-  border: "1px solid #38444d",
-  background: "#16181c",
-  color: "#e7e9ea",
-  fontSize: 15,
-  resize: "vertical",
-  outline: "none",
-};
-
-const btnPrimary = {
-  padding: "12px 20px",
-  borderRadius: 9999,
-  border: "none",
-  background: "#1d9bf0",
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
-  minHeight: 48,
-};
-
-const btnGhost = {
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "1px solid #38444d",
-  background: "transparent",
-  color: "#e7e9ea",
-  cursor: "pointer",
-  fontSize: 13,
-};
-
-const panel = {
-  marginTop: 12,
-  padding: 12,
-  borderRadius: 10,
-  background: "#16181c",
-  border: "1px solid #2f3336",
-  fontSize: 13,
-};
+function voicePillClass(phase, connected) {
+  if (phase === VOICE_ERROR) return "pill pill-voice error";
+  if (!connected) return "pill pill-voice pill-neutral";
+  if (phase === VOICE_LISTENING) return "pill pill-voice listening";
+  if (phase === VOICE_SPEAKING) return "pill pill-voice speaking";
+  if (phase === VOICE_PROCESSING) return "pill pill-voice pill-warn";
+  return "pill pill-voice pill-ok";
+}
 
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [sessionId, setSessionId] = useState("web-session");
-  const [indexName, setIndexName] = useState("hy_model_index");
   const [verbose, setVerbose] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [apiOk, setApiOk] = useState(null);
-  const [showConfig, setShowConfig] = useState(false);
-  const [lkUrl, setLkUrl] = useState("ws://127.0.0.1:7880");
-  const [lkToken, setLkToken] = useState("");
+  const [ready, setReady] = useState(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [lkUrl, setLkUrl] = useState(() => import.meta.env.VITE_LIVEKIT_URL || "");
   const [lkConnected, setLkConnected] = useState(false);
-  const [lkStatus, setLkStatus] = useState("Disconnected");
+  const [lkBusy, setLkBusy] = useState(false);
+  const [voicePhase, setVoicePhase] = useState(VOICE_DISCONNECTED);
+  const [voiceDetail, setVoiceDetail] = useState("");
   const [voiceLog, setVoiceLog] = useState([]);
-  const [roomRef, setRoomRef] = useState(null);
+  const roomRef = useRef(null);
+  const micTrackRef = useRef(null);
+  const assistantAudioElRef = useRef(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -152,23 +77,37 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/health`, { method: "GET" })
-      .then((r) => {
-        if (!cancelled) setApiOk(r.ok);
-      })
-      .catch(() => {
+    (async () => {
+      try {
+        const [h, r] = await Promise.all([
+          fetch(`${API_BASE}/health`, { method: "GET" }),
+          fetch(`${API_BASE}/ready`, { method: "GET" }),
+        ]);
+        if (!cancelled) {
+          setApiOk(h.ok);
+          if (r.ok) {
+            const j = await r.json();
+            setReady(j);
+            if (!import.meta.env.VITE_LIVEKIT_URL && j.livekit_url) {
+              setLkUrl(j.livekit_url);
+            }
+          }
+        }
+      } catch {
         if (!cancelled) setApiOk(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const apiLabel = useMemo(() => {
-    if (apiOk === null) return "API: checking…";
-    if (apiOk) return "API: reachable";
-    return "API: offline";
-  }, [apiOk]);
+  const apiPillClass = apiOk === null ? "pill pill-neutral" : apiOk ? "pill pill-ok" : "pill pill-off";
+  const apiLabel = apiOk === null ? "API" : apiOk ? "API online" : "API offline";
+
+  const groqPillClass =
+    !ready || ready.groq_configured ? "pill pill-ok" : "pill pill-warn";
+  const groqLabel = !ready ? "" : ready.groq_configured ? "Groq ready" : "Groq key missing";
 
   async function sendMessage(e) {
     e?.preventDefault();
@@ -187,7 +126,7 @@ export default function App() {
         body: JSON.stringify({
           session_id: sessionId,
           query: text,
-          index_name: indexName,
+          index_name: "hy_model_index",
           top_k: 8,
           verbose,
         }),
@@ -222,7 +161,7 @@ export default function App() {
         ...m,
         {
           role: "assistant",
-          content: `Չհաջողվեց կապվել API-ի հետ։ Ստուգեք՝ աշխատում է \`${API_BASE}\` սերվերը։`,
+          content: "Չհաջողվեց կապվել API-ի հետ։ Ստուգեք՝ աշխատում է սերվերը։",
           status: "error",
           t: Date.now(),
         },
@@ -232,174 +171,368 @@ export default function App() {
     }
   }
 
-  async function connectLiveKit() {
+  const connectLiveKit = useCallback(async () => {
+    if (lkConnected || lkBusy) return;
+    setLkBusy(true);
+    setVoicePhase(VOICE_DISCONNECTED);
+    setVoiceDetail("Connecting…");
     try {
+      let wsUrl =
+        normalizeLivekitWsUrl(lkUrl) || normalizeLivekitWsUrl(ready?.livekit_url);
+      if (!wsUrl) {
+        const r = await fetch(`${API_BASE}/api/livekit/config`);
+        const bodyText = await r.text();
+        if (!r.ok) {
+          throw new Error(
+            `LiveKit config HTTP ${r.status}: ${bodyText.slice(0, 120) || r.statusText}`.trim()
+          );
+        }
+        let cfg;
+        try {
+          cfg = JSON.parse(bodyText);
+        } catch {
+          throw new Error("LiveKit config was not JSON (wrong process on :8000?).");
+        }
+        wsUrl = normalizeLivekitWsUrl(cfg.livekit_url);
+        if (!wsUrl) throw new Error("API did not return livekit_url.");
+        setLkUrl(wsUrl);
+      }
+      if (!/^wss?:\/\//i.test(wsUrl)) {
+        throw new Error(`Invalid LiveKit URL (need ws:// or wss://): ${wsUrl}`);
+      }
+      const tokRes = await fetch(
+        `${API_BASE}/api/livekit/token?identity=${encodeURIComponent(LIVEKIT_IDENTITY)}`
+      );
+      if (!tokRes.ok) {
+        let detail = await tokRes.text();
+        try {
+          const j = JSON.parse(detail);
+          detail = j.detail || detail;
+        } catch {
+          /* keep */
+        }
+        throw new Error(detail || `token HTTP ${tokRes.status}`);
+      }
+      const { token } = await tokRes.json();
+      if (!token) throw new Error("Empty token from API");
+
       const room = new Room();
       room.on(RoomEvent.Connected, () => {
         setLkConnected(true);
-        setLkStatus("Connected");
+        setVoicePhase(VOICE_IDLE);
+        setVoiceDetail("");
+        setVoiceLog((prev) => [...prev, `${new Date().toISOString()} Room connected`]);
       });
       room.on(RoomEvent.Disconnected, () => {
         setLkConnected(false);
-        setLkStatus("Disconnected");
+        setVoicePhase(VOICE_DISCONNECTED);
+        setVoiceDetail("");
+        roomRef.current = null;
       });
-      room.on(RoomEvent.DataReceived, (payload) => {
+      room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
         try {
-          const text = new TextDecoder().decode(payload);
-          const body = JSON.parse(text);
-          setVoiceLog((prev) => [
-            ...prev,
-            `[${body.status}] ${(body.answer_text || "").slice(0, 200)}`,
-          ]);
+          const bytes = payload instanceof Uint8Array ? payload : new Uint8Array(payload);
+          const text = new TextDecoder().decode(bytes);
+          const t = topic || "";
+          if (t === "voice.state") {
+            const j = JSON.parse(text);
+            const st = j.state;
+            if (st === "idle") {
+              setVoicePhase(VOICE_IDLE);
+              setVoiceDetail("");
+            } else if (st === "processing") {
+              setVoicePhase(VOICE_PROCESSING);
+              setVoiceDetail("");
+            } else if (st === "speaking") {
+              setVoicePhase(VOICE_SPEAKING);
+              setVoiceDetail("");
+            } else if (st === "error") {
+              setVoicePhase(VOICE_ERROR);
+              setVoiceDetail(String(j.detail || "unknown_error"));
+            } else if (st === "busy") {
+              setVoiceLog((p) => [...p, "Server busy (finish assistant turn first)."]);
+              setVoicePhase(VOICE_IDLE);
+            }
+            return;
+          }
+          if (t === "assistant.text") {
+            const body = JSON.parse(text);
+            const ans = body.answer_text || "";
+            const ut = body.user_text || "";
+            if (ut) {
+              setMessages((m) => [...m, { role: "user", content: ut, t: Date.now(), viaVoice: true }]);
+            }
+            if (ans) {
+              setMessages((m) => [
+                ...m,
+                {
+                  role: "assistant",
+                  content: ans,
+                  status: body.status,
+                  sources: [],
+                  trace: body.decision_trace || [],
+                  refusal: body.refusal_reason,
+                  t: Date.now(),
+                  viaVoice: true,
+                },
+              ]);
+            }
+            setVoiceLog((p) => [...p, `assistant.text ${body.status || ""}`]);
+            return;
+          }
         } catch {
           /* ignore */
         }
       });
       room.on(RoomEvent.TrackSubscribed, (track) => {
         if (track.kind === "audio") {
-          track.attach();
-          setVoiceLog((prev) => [...prev, "Assistant audio subscribed"]);
+          const el = track.attach();
+          el.style.display = "none";
+          document.body.appendChild(el);
+          assistantAudioElRef.current = el;
+          el.addEventListener("ended", () => {
+            setVoicePhase((p) => (p === VOICE_SPEAKING ? VOICE_IDLE : p));
+          });
+          el.play?.().catch(() => {});
+          setVoiceLog((p) => [...p, "Subscribed assistant audio"]);
         }
       });
-      await room.connect(lkUrl, lkToken);
-      const mic = await createLocalAudioTrack();
-      await room.localParticipant.publishTrack(mic);
-      setVoiceLog((prev) => [...prev, "Microphone published"]);
-      setRoomRef(room);
+      await room.connect(wsUrl, token, {
+        autoSubscribe: true,
+        disconnectOnPageLeave: true,
+        peerConnectionTimeout: 60_000,
+        websocketTimeout: 30_000,
+        rtcConfig: {
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        },
+      });
+      roomRef.current = room;
     } catch (err) {
-      setLkStatus(`Error: ${String(err)}`);
+      const msg = String(err.message || err);
+      setVoicePhase(VOICE_ERROR);
+      setVoiceDetail(msg);
       setLkConnected(false);
+      roomRef.current = null;
+    } finally {
+      setLkBusy(false);
     }
-  }
+  }, [API_BASE, LIVEKIT_IDENTITY, lkConnected, lkBusy, lkUrl, ready]);
+
+  const startVoiceTurn = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room || voicePhase !== VOICE_IDLE) return;
+    setVoiceDetail("");
+    try {
+      const enc = new TextEncoder();
+      await room.localParticipant.publishData(enc.encode(JSON.stringify({ type: "start" })), {
+        reliable: true,
+        topic: "voice.ptt",
+      });
+      let track = micTrackRef.current;
+      if (!track) {
+        track = await createLocalAudioTrack({
+          echoCancellation: true,
+          noiseSuppression: true,
+        });
+        micTrackRef.current = track;
+      }
+      await room.localParticipant.publishTrack(track);
+      setVoicePhase(VOICE_LISTENING);
+    } catch (e) {
+      setVoicePhase(VOICE_ERROR);
+      setVoiceDetail(String(e.message || e));
+    }
+  }, [voicePhase]);
+
+  const stopVoiceTurn = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room || voicePhase !== VOICE_LISTENING) return;
+    setVoicePhase(VOICE_PROCESSING);
+    try {
+      const enc = new TextEncoder();
+      await room.localParticipant.publishData(enc.encode(JSON.stringify({ type: "end" })), {
+        reliable: true,
+        topic: "voice.ptt",
+      });
+      await new Promise((r) => setTimeout(r, 150));
+      const track = micTrackRef.current;
+      if (track) await room.localParticipant.unpublishTrack(track);
+    } catch (e) {
+      setVoicePhase(VOICE_ERROR);
+      setVoiceDetail(String(e.message || e));
+    }
+  }, [voicePhase]);
 
   async function disconnectLiveKit() {
-    if (roomRef) {
-      await roomRef.disconnect();
-      setRoomRef(null);
+    const room = roomRef.current;
+    if (room) {
+      const track = micTrackRef.current;
+      if (track && room.localParticipant) {
+        try {
+          await room.localParticipant.unpublishTrack(track);
+        } catch {
+          /* ignore */
+        }
+      }
+      await room.disconnect();
+      roomRef.current = null;
     }
+    micTrackRef.current = null;
+    assistantAudioElRef.current = null;
     setLkConnected(false);
-    setLkStatus("Disconnected");
+    setVoicePhase(VOICE_DISCONNECTED);
+    setVoiceDetail("");
   }
 
+  const voiceStatusLine = useMemo(() => {
+    const base = voicePhaseLabel(voicePhase);
+    if (voiceDetail && voicePhase === VOICE_ERROR) {
+      return `${base}: ${voiceDetail}`;
+    }
+    return base;
+  }, [voicePhase, voiceDetail]);
+
+  const micDisabled =
+    !lkConnected || lkBusy || voicePhase === VOICE_PROCESSING || voicePhase === VOICE_SPEAKING;
+
+  const handleMicButton = useCallback(() => {
+    if (voicePhase === VOICE_ERROR) {
+      setVoicePhase(VOICE_IDLE);
+      setVoiceDetail("");
+      return;
+    }
+    if (voicePhase === VOICE_LISTENING) stopVoiceTurn();
+    else if (voicePhase === VOICE_IDLE) startVoiceTurn();
+  }, [voicePhase, startVoiceTurn, stopVoiceTurn]);
+
   return (
-    <div style={shell}>
-      <header style={header}>
+    <div className="app-shell">
+      <header className="app-header">
         <div>
-          <strong>Banking support</strong>
-          <span style={{ opacity: 0.6, marginLeft: 8, fontSize: 14 }}>
-            Հայերեն · վարկ / ավանդ / մասնաճյուղ
-          </span>
+          <div className="app-brand-title">Բանկային աջակցություն</div>
+          <div className="app-brand-sub">
+            Հայերեն RAG · hy_model_index · Groq · push-to-talk voice
+          </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span
-            style={{
-              fontSize: 13,
-              padding: "4px 10px",
-              borderRadius: 999,
-              background: apiOk ? "#063d2f" : apiOk === false ? "#4a1520" : "#2a2f36",
-            }}
-          >
-            {apiLabel}
+        <div className="pill-row">
+          <span className={apiPillClass}>{apiLabel}</span>
+          {ready ? <span className={groqPillClass}>{groqLabel}</span> : null}
+          <span className={voicePillClass(voicePhase, lkConnected)} title={voiceDetail || undefined}>
+            {voiceStatusLine}
           </span>
-          <span
-            style={{
-              fontSize: 13,
-              padding: "4px 10px",
-              borderRadius: 999,
-              background: lkConnected ? "#063d2f" : "#2a2f36",
-            }}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={connectLiveKit}
+            disabled={!apiOk || lkConnected || lkBusy}
           >
-            LiveKit: {lkStatus}
-          </span>
-          <button type="button" style={btnGhost} onClick={() => setShowConfig((s) => !s)}>
-            {showConfig ? "Hide config" : "Config"}
+            {lkBusy ? "…" : "Connect voice"}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-mic ${voicePhase === VOICE_LISTENING ? "listen" : "idle"}`}
+            onClick={handleMicButton}
+            disabled={micDisabled && voicePhase !== VOICE_ERROR}
+          >
+            {voicePhase === VOICE_LISTENING
+              ? "Stop & send"
+              : voicePhase === VOICE_ERROR
+                ? "Reset"
+                : "Mic"}
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={disconnectLiveKit} disabled={!lkConnected}>
+            Disconnect
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={() => setShowAdvanced((s) => !s)}>
+            {showAdvanced ? "Hide settings" : "Settings"}
           </button>
         </div>
       </header>
 
-      {showConfig ? (
-        <div style={{ ...panel, margin: "12px auto 0", maxWidth: 900, width: "calc(100% - 32px)" }}>
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              Session ID
-              <input
-                value={sessionId}
-                onChange={(e) => setSessionId(e.target.value)}
-                style={{ ...inputStyle, minHeight: 40 }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              Index name
-              <input
-                value={indexName}
-                onChange={(e) => setIndexName(e.target.value)}
-                style={{ ...inputStyle, minHeight: 40 }}
-              />
-            </label>
-          </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            <input type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
-            Verbose decision trace
-          </label>
-          <p style={{ opacity: 0.7, margin: "10px 0 0", fontSize: 12 }}>
-            API base: <code>{API_BASE}</code> — override with <code>VITE_API_BASE_URL</code>.
-          </p>
-          <hr style={{ borderColor: "#2f3336", margin: "14px 0" }} />
-          <strong style={{ fontSize: 13 }}>LiveKit (optional)</strong>
-          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-            <input
-              placeholder="LIVEKIT_URL"
-              value={lkUrl}
-              onChange={(e) => setLkUrl(e.target.value)}
-              style={{ ...inputStyle, minHeight: 40 }}
-            />
-            <textarea
-              placeholder="Paste LIVEKIT_TOKEN"
-              rows={2}
-              value={lkToken}
-              onChange={(e) => setLkToken(e.target.value)}
-              style={inputStyle}
-            />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" style={btnGhost} onClick={connectLiveKit} disabled={lkConnected || !lkToken.trim()}>
-                Connect + mic
-              </button>
-              <button type="button" style={btnGhost} onClick={disconnectLiveKit} disabled={!lkConnected}>
-                Disconnect
-              </button>
-            </div>
-          </div>
+      {error ? (
+        <div className="banner-error" role="alert">
+          {error}
         </div>
       ) : null}
 
-      <main style={main}>
-        {messages.length === 0 ? (
-          <p style={{ opacity: 0.65, marginTop: 24 }}>
-            Հարցրեք վարկերի, ավանդների կամ մասնաճյուղերի մասին։ Օրինակ՝ «Ինչ ավանդներ ունի ACBA-ն»։
+      {showAdvanced ? (
+        <div className="panel-advanced">
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ color: "var(--text-muted)" }}>Session ID</span>
+            <input
+              className="composer-input"
+              style={{ minHeight: 40 }}
+              value={sessionId}
+              onChange={(e) => setSessionId(e.target.value)}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+            <input type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
+            Show debug trace in chat
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+            <span style={{ color: "var(--text-muted)" }}>LiveKit URL</span>
+            <input
+              className="composer-input"
+              style={{ minHeight: 40 }}
+              value={lkUrl}
+              onChange={(e) => setLkUrl(e.target.value)}
+              placeholder="ws://127.0.0.1:7880"
+            />
+          </label>
+          {voiceLog.length > 0 ? (
+            <div style={{ marginTop: 14, maxHeight: 140, overflow: "auto", fontSize: 12, color: "var(--text-muted)" }}>
+              <strong style={{ color: "var(--text)" }}>Voice log</strong>
+              <ul style={{ margin: "8px 0 0 18px" }}>
+                {voiceLog.slice(-12).map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <p style={{ opacity: 0.65, margin: "14px 0 0", fontSize: 12 }}>
+            API <code>{API_BASE || "(proxy)"}</code> · identity <code>{LIVEKIT_IDENTITY}</code>
           </p>
+        </div>
+      ) : null}
+
+      <main className="chat-main" style={{ display: "flex", flexDirection: "column" }}>
+        {messages.length === 0 ? (
+          <div className="hero-empty">
+            <h2>Ուղեցույց</h2>
+            <ol>
+              <li>Հարցրեք վարկերի, ավանդների կամ մասնաճյուղերի մասին տեքստով (ստորև)։</li>
+              <li>
+                Կամ միացրեք ձայնը՝ <strong>Connect voice</strong>, ապա <strong>Mic</strong> — խոսեք հայերեն, ապա{" "}
+                <strong>Stop & send</strong>։
+              </li>
+              <li>Պատասխանները հիմնված են միայն բանկերի պաշտոնական տվյալների վրա (Groq + hy_model_index)։</li>
+            </ol>
+          </div>
         ) : null}
         {messages.map((m, i) =>
           m.role === "user" ? (
-            <div key={`u-${i}-${m.t}`} style={bubbleUser}>
+            <div key={`u-${i}-${m.t}`} className="bubble-user">
               {m.content}
+              {m.viaVoice ? <span className="voice-badge">voice</span> : null}
             </div>
           ) : (
-            <div key={`a-${i}-${m.t}`} style={bubbleAsst}>
+            <div key={`a-${i}-${m.t}`} className="bubble-assistant">
               {m.content}
               {m.status && m.status !== "error" ? (
-                <div style={meta}>
-                  Status: <strong>{m.status}</strong>
+                <div className="bubble-meta">
+                  {m.status}
                   {m.ms != null ? ` · ${m.ms} ms` : null}
-                  {m.refusal ? ` · refusal: ${m.refusal}` : null}
+                  {m.refusal ? ` · ${m.refusal}` : null}
                 </div>
               ) : null}
               {m.sources && m.sources.length > 0 ? (
-                <div style={{ ...meta, marginTop: 8 }}>
-                  Sources:
-                  <ul style={{ margin: "4px 0 0 18px" }}>
+                <div className="bubble-meta" style={{ marginTop: 10, textTransform: "none", letterSpacing: 0 }}>
+                  Աղբյուրներ՝
+                  <ul style={{ margin: "6px 0 0 18px" }}>
                     {m.sources.map((u) => (
                       <li key={u}>
-                        <a href={u} target="_blank" rel="noreferrer" style={{ color: "#1d9bf0" }}>
+                        <a href={u} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
                           {u}
                         </a>
                       </li>
@@ -408,7 +541,7 @@ export default function App() {
                 </div>
               ) : null}
               {verbose && m.trace && m.trace.length > 0 ? (
-                <details style={{ ...meta, marginTop: 8 }}>
+                <details className="bubble-meta" style={{ marginTop: 10, textTransform: "none" }}>
                   <summary style={{ cursor: "pointer" }}>Trace</summary>
                   <ul style={{ margin: "6px 0 0 18px" }}>
                     {m.trace.map((t, j) => (
@@ -421,20 +554,19 @@ export default function App() {
           ),
         )}
         {loading ? (
-          <div style={{ ...bubbleAsst, opacity: 0.8 }}>
-            <span className="typing">Մտածում եմ…</span>
+          <div className="bubble-assistant" style={{ opacity: 0.85 }}>
+            <span className="typing-dots">Մտածում եմ</span>
           </div>
         ) : null}
-        {error ? <div style={{ color: "#f4212e", fontSize: 14, marginBottom: 8 }}>{error}</div> : null}
         <div ref={bottomRef} />
       </main>
 
-      <form style={composer} onSubmit={sendMessage}>
-        <div style={composerInner}>
+      <form className="composer-bar" onSubmit={sendMessage}>
+        <div className="composer-inner">
           <textarea
-            style={inputStyle}
+            className="composer-input"
             rows={2}
-            placeholder="Հարց…"
+            placeholder="Հարց հայերենով…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -444,8 +576,13 @@ export default function App() {
               }
             }}
           />
-          <button type="submit" style={{ ...btnPrimary, opacity: loading || !draft.trim() ? 0.5 : 1 }} disabled={loading || !draft.trim()}>
-            Send
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ minWidth: 100 }}
+            disabled={loading || !draft.trim()}
+          >
+            Ուղարկել
           </button>
         </div>
       </form>

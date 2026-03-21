@@ -1,3 +1,10 @@
+# Voice agent — copy to voice_config.yaml or pass --voice-config (defaults use HTTP + .env).
+#
+# Push-to-talk: browser sends topic "voice.ptt" {type:start|end}; mic only while listening.
+#
+# Production path (default): HTTP Armenian STT + HTTP Armenian TTS via VOICE_* env vars.
+# CI / no endpoints: set VOICE_USE_MOCK=1 or stt.provider: mock / tts.provider: mock.
+
 livekit:
   url: "ws://127.0.0.1:7880"
   api_key: "devkey"
@@ -7,30 +14,31 @@ livekit:
   participant_identity_prefix: "user"
 
 stt:
-  # mock | http_whisper
-  provider: "mock"
-  language: "hy-AM"
+  provider: "http_whisper"
+  language: "hy"
   endpoint: null
-  timeout_seconds: 20
+  timeout_seconds: 45
+  multipart_field: "file"
+  upload_filename: "audio.wav"
   api_key: null
   api_key_header: "Authorization"
   response_text_field: "text"
   fallback_to_mock: true
 
 tts:
-  # mock | http_tts
-  provider: "mock"
+  provider: "http_tts"
   language: "hy-AM"
+  # scripts/voice_http_tts_server.py maps "default" → hy-AM-AnahitNeural (edge-tts)
   voice_name: "default"
   output_encoding: "wav"
   endpoint: null
-  timeout_seconds: 20
+  timeout_seconds: 60
   api_key: null
   api_key_header: "Authorization"
   response_audio_field: "audio_base64"
   fallback_to_mock: true
 
 behavior:
-  debug: true
-  verbose_trace: true
+  debug: false
+  verbose_trace: false
   max_response_chars: 1800

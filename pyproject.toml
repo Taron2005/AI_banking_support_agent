@@ -19,6 +19,7 @@ dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
   "python-dotenv>=1.0.0",
+  "livekit-api>=0.8.0",
 ]
 
 [build-system]
@@ -29,11 +30,17 @@ build-backend = "setuptools.build_meta"
 playwright = ["playwright>=1.45.0"]
 voice = [
   "livekit>=0.11.0",
-  "livekit-api>=0.8.0",
 ]
 dev = [
   "pytest>=8.3.0",
   "pytest-cov>=5.0.0",
+]
+# Optional: local STT/TTS HTTP servers (scripts/voice_http_*_server.py)
+voice_local_servers = [
+  "faster-whisper>=1.0.0",
+  "edge-tts>=6.1.0",
+  "miniaudio>=1.61",
+  "python-multipart>=0.0.9",
 ]
 
 [tool.pytest.ini_options]

@@ -18,23 +18,27 @@ class LiveKitSettings(BaseModel):
 
 
 class STTSettings(BaseModel):
-    provider: Literal["mock", "http_whisper"] = "mock"
-    language: str = "hy-AM"
+    # Default path: HTTP Whisper-style service; set VOICE_STT_ENDPOINT in .env.
+    provider: Literal["mock", "http_whisper"] = "http_whisper"
+    language: str = "hy"
     endpoint: str | None = None
-    timeout_seconds: float = 20.0
+    timeout_seconds: float = 45.0
     api_key: str | None = None
     api_key_header: str = "Authorization"
     response_text_field: str = "text"
+    multipart_field: str = "file"
+    upload_filename: str = "audio.wav"
     fallback_to_mock: bool = True
 
 
 class TTSSettings(BaseModel):
-    provider: Literal["mock", "http_tts"] = "mock"
+    # Default path: HTTP TTS; set VOICE_TTS_ENDPOINT in .env.
+    provider: Literal["mock", "http_tts"] = "http_tts"
     language: str = "hy-AM"
     voice_name: str = "default"
     output_encoding: Literal["wav", "mp3", "pcm_s16le"] = "wav"
     endpoint: str | None = None
-    timeout_seconds: float = 20.0
+    timeout_seconds: float = 60.0
     api_key: str | None = None
     api_key_header: str = "Authorization"
     response_audio_field: str = "audio_base64"
@@ -52,6 +56,18 @@ class VoiceConfig(BaseModel):
     stt: STTSettings = Field(default_factory=STTSettings)
     tts: TTSSettings = Field(default_factory=TTSSettings)
     behavior: VoiceBehaviorSettings = Field(default_factory=VoiceBehaviorSettings)
+
+
+def _coerce_livekit_ws_url(url: str) -> str:
+    """RTC SDKs expect ws:// or wss://; .env often mistakenly uses http://."""
+
+    u = (url or "").strip().rstrip("/")
+    lower = u.lower()
+    if lower.startswith("http://"):
+        return "ws://" + u[7:]
+    if lower.startswith("https://"):
+        return "wss://" + u[8:]
+    return u
 
 
 def _validate_self_hosted_url(url: str) -> None:
@@ -86,6 +102,7 @@ def load_voice_config(path: str | Path | None = None) -> VoiceConfig:
     tts_key = os.getenv("VOICE_TTS_API_KEY")
     if env_url:
         cfg.livekit.url = env_url
+    cfg.livekit.url = _coerce_livekit_ws_url(cfg.livekit.url)
     if env_key:
         cfg.livekit.api_key = env_key
     if env_secret:
@@ -99,9 +116,9 @@ def load_voice_config(path: str | Path | None = None) -> VoiceConfig:
     if tts_key:
         cfg.tts.api_key = tts_key
     _validate_self_hosted_url(cfg.livekit.url)
-    if cfg.stt.provider != "mock" and not cfg.stt.endpoint:
-        raise ValueError("STT endpoint is required when stt.provider != mock")
-    if cfg.tts.provider != "mock" and not cfg.tts.endpoint:
-        raise ValueError("TTS endpoint is required when tts.provider != mock")
+    force_mock = (os.getenv("VOICE_USE_MOCK") or "").strip().lower() in ("1", "true", "yes")
+    if force_mock:
+        cfg.stt.provider = "mock"
+        cfg.tts.provider = "mock"
     return cfg
 

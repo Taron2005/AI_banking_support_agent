@@ -1,0 +1,19 @@
+# Self-hosted LiveKit for local Docker (browser + voice agent on the same host).
+# - Keys must match token minting: devkey / secret (see livekit_tokens.py, .env.example).
+# - Docker Desktop on Windows often fails ICE with a single udp mux (7882). A mapped UDP
+#   port_range is more reliable; compose publishes 50000-50050/udp alongside 7881 (TCP ICE).
+# - Do not set udp_port and port_range_* together (LiveKit requirement).
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50050
+  use_external_ip: false
+  node_ip: 127.0.0.1
+  allow_tcp_fallback: true
+  enable_loopback_candidate: true
+
+keys:
+  devkey: secret

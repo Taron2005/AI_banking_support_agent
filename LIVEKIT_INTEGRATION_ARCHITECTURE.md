@@ -35,7 +35,7 @@ This preserves follow-up continuity per participant in the same room.
 
 - `voice/stt.py` exposes `STTProvider` protocol.
 - `voice/tts.py` exposes `TTSProvider` protocol.
-- Current default providers are mock implementations for local development/testing.
+- Default voice config targets **HTTP STT/TTS**; mock is used only when endpoints are unset or `VOICE_USE_MOCK=1`.
 - Providers are built via `voice/factory.py`, so later replacements are isolated.
 
 ## LiveKit (self-hosted) assumptions

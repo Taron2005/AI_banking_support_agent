@@ -14,7 +14,7 @@ ProviderName = Literal["mock", "groq"]
 
 
 class LLMSettings(BaseModel):
-    provider: ProviderName = "mock"
+    provider: ProviderName = "groq"
     endpoint: str | None = None
     api_key: str | None = None
     model: str = "llama-3.1-8b-instant"

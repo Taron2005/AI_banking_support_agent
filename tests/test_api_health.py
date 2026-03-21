@@ -25,3 +25,14 @@ def test_health_and_root_with_full_app() -> None:
     r2 = client.get("/")
     assert r2.status_code == 200
     assert "docs" in r2.json()
+    r3 = client.get("/ready")
+    assert r3.status_code == 200
+    body = r3.json()
+    assert body.get("status") == "ok"
+    assert "groq_configured" in body
+    r4 = client.get("/api/livekit/config")
+    assert r4.status_code == 200
+    assert "livekit_url" in r4.json()
+    r5 = client.get("/api/livekit/token", params={"identity": "pytest-user"})
+    assert r5.status_code == 200
+    assert r5.json().get("token")

@@ -17,6 +17,10 @@ from .voice_models import STTInput, VoiceTurnResult
 
 logger = logging.getLogger(__name__)
 
+TOPIC_PTT = "voice.ptt"
+TOPIC_ASSISTANT_TEXT = "assistant.text"
+TOPIC_VOICE_STATE = "voice.state"
+
 
 @dataclass(frozen=True)
 class LiveKitParticipantContext:
@@ -28,10 +32,9 @@ class LiveKitVoiceAgent:
     """
     Voice transport wrapper around existing runtime orchestrator.
 
-    Runtime remains the decision-making brain; this layer only maps
-    audio/text turns to runtime calls and returns TTS audio.
-
-    This implementation is self-hosted LiveKit only.
+    Push-to-talk: the browser sends `voice.ptt` data packets (`start` / `end`) and only
+    publishes mic audio while recording. The agent buffers PCM while `start` is active
+    and runs STT → runtime → TTS once on `end`.
     """
 
     def __init__(
@@ -48,6 +51,10 @@ class LiveKitVoiceAgent:
         self._stt = stt_provider
         self._tts = tts_provider
         self._voice_config = voice_config
+        self._turn_lock = asyncio.Lock()
+        self._ptt_recording: dict[str, bool] = {}
+        self._ptt_buffers: dict[str, list[bytes]] = {}
+        self._audio_consumer_tasks: dict[str, asyncio.Task[None]] = {}
 
     def process_turn(
         self,
@@ -66,8 +73,8 @@ class LiveKitVoiceAgent:
             logger.warning("STT returned empty text; orchestrator may refuse or mis-route.")
         elif "[mock-stt-unavailable]" in user_text:
             logger.warning(
-                "STT is mock/non-audio mode for this payload. For real speech, set stt.provider=http_whisper "
-                "and VOICE_STT_ENDPOINT, or send JSON text via LiveKit data packets."
+                "STT returned mock placeholder (no real transcription). Set VOICE_STT_ENDPOINT in .env "
+                "for Armenian speech-to-text, or send JSON text via LiveKit data packets."
             )
         runtime_response = self._runtime.handle(
             RuntimeRequest(
@@ -90,14 +97,11 @@ class LiveKitVoiceAgent:
     def run_self_hosted(self, *, index_name: str) -> None:
         asyncio.run(self._run_self_hosted_async(index_name=index_name))
 
+    async def _publish_voice_state(self, room, *, state: str, detail: str | None = None) -> None:
+        body = json.dumps({"state": state, "detail": detail}, ensure_ascii=False).encode("utf-8")
+        await room.local_participant.publish_data(body, reliable=True, topic=TOPIC_VOICE_STATE)
+
     async def _run_self_hosted_async(self, *, index_name: str) -> None:
-        """
-        Run LiveKit loop in self-hosted mode with real audio-track processing.
-
-        Flow:
-        remote mic audio track -> STT -> runtime -> TTS -> publish local audio track.
-        """
-
         try:
             import livekit.rtc as rtc  # type: ignore[import-not-found]
         except Exception as exc:  # pragma: no cover
@@ -112,8 +116,13 @@ class LiveKitVoiceAgent:
         )
         room = rtc.Room()
         token = self._load_livekit_token()
+        ice = rtc.IceServer()
+        ice.urls.append("stun:stun.l.google.com:19302")
+        rtc_cfg = rtc.RtcConfiguration()
+        rtc_cfg.ice_servers.append(ice)
+        lk_connect_opts = rtc.RoomOptions(connect_timeout=60.0, rtc_config=rtc_cfg)
         try:
-            await room.connect(self._voice_config.livekit.url, token)
+            await room.connect(self._voice_config.livekit.url, token, lk_connect_opts)
         except Exception as exc:
             logger.error(
                 "LiveKit connect failed url=%s (check LIVEKIT_URL, token scope, and server).",
@@ -123,55 +132,248 @@ class LiveKitVoiceAgent:
                 "Could not connect to LiveKit. Verify LIVEKIT_URL, LIVEKIT_TOKEN, and that the server is running."
             ) from exc
 
-        # Publish one agent output audio track for synthesized responses.
         out_source = rtc.AudioSource(sample_rate=24000, num_channels=1)
         out_track = rtc.LocalAudioTrack.create_audio_track("assistant-tts", out_source)
         await room.local_participant.publish_track(out_track)
         logger.info("Published assistant audio track.")
 
-        turn_window_seconds = 3.0
-        min_bytes_for_turn = 3200  # ~100ms mono int16@16k
+        agent_id = self._voice_config.livekit.agent_identity
 
         @room.on("track_subscribed")
         def _on_track_subscribed(track, publication, participant):  # pragma: no cover
             if getattr(track, "kind", None) != rtc.TrackKind.KIND_AUDIO:
                 return
-            logger.info("Subscribed remote audio track participant=%s", participant.identity)
-            asyncio.create_task(
+            if participant.identity == agent_id:
+                return
+            pid = participant.identity
+            prev = self._audio_consumer_tasks.pop(pid, None)
+            if prev and not prev.done():
+                prev.cancel()
+            self._audio_consumer_tasks[pid] = asyncio.create_task(
                 self._consume_remote_audio_track(
                     rtc=rtc,
-                    room=room,
                     track=track,
-                    participant_identity=participant.identity,
-                    index_name=index_name,
-                    out_source=out_source,
-                    turn_window_seconds=turn_window_seconds,
-                    min_bytes_for_turn=min_bytes_for_turn,
+                    participant_identity=pid,
                 )
             )
 
+        @room.on("track_unsubscribed")
+        def _on_track_unsubscribed(track, publication, participant):  # pragma: no cover
+            if participant.identity == agent_id:
+                return
+            task = self._audio_consumer_tasks.pop(participant.identity, None)
+            if task and not task.done():
+                task.cancel()
+
         @room.on("data_received")
         def _on_data(packet) -> None:  # pragma: no cover
-            # Keep text data mode as fallback/manual test channel.
-            asyncio.create_task(self._handle_data_packet(room=room, packet=packet, index_name=index_name))
+            asyncio.create_task(
+                self._handle_data_received(
+                    rtc=rtc,
+                    room=room,
+                    out_source=out_source,
+                    packet=packet,
+                    index_name=index_name,
+                )
+            )
 
-        logger.info("LiveKit agent connected; waiting for audio tracks / data packets.")
+        logger.info("LiveKit agent connected; push-to-talk on topic %s.", TOPIC_PTT)
         while True:  # pragma: no cover
             await asyncio.sleep(1)
 
-    async def _handle_data_packet(self, *, room, packet, index_name: str) -> None:
+    async def _consume_remote_audio_track(
+        self,
+        *,
+        rtc,
+        track,
+        participant_identity: str,
+    ) -> None:
+        stream = rtc.AudioStream(track=track, sample_rate=16000, num_channels=1)
+        try:
+            async for evt in stream:  # pragma: no cover
+                if not self._ptt_recording.get(participant_identity, False):
+                    continue
+                frame = evt.frame
+                pcm = bytes(frame.data)
+                self._ptt_buffers.setdefault(participant_identity, []).append(pcm)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Audio consumer failed participant=%s", participant_identity)
+
+    async def _handle_data_received(
+        self,
+        *,
+        rtc,
+        room,
+        out_source,
+        packet,
+        index_name: str,
+    ) -> None:
+        topic = (getattr(packet, "topic", None) or "").strip()
         try:
             body = json.loads(bytes(packet.data).decode("utf-8"))
-            participant_id = body.get("participant_identity") or "unknown"
-            text = body.get("text", "")
-            result = self.process_turn(
-                participant=LiveKitParticipantContext(
-                    room_name=self._voice_config.livekit.room_name,
-                    participant_identity=participant_id,
-                ),
-                payload=STTInput(content=text.encode("utf-8"), encoding="text", language=self._voice_config.stt.language),
+        except Exception:
+            logger.warning("Ignoring non-JSON data packet topic=%s", topic)
+            return
+
+        if topic == TOPIC_PTT:
+            await self._handle_ptt_packet(
+                rtc=rtc,
+                room=room,
+                out_source=out_source,
+                packet=packet,
+                body=body,
                 index_name=index_name,
             )
+            return
+
+        # Legacy: JSON text queries (no topic), for manual testing.
+        if topic == "" and isinstance(body, dict) and "text" in body:
+            await self._handle_legacy_text_packet(
+                rtc=rtc,
+                room=room,
+                out_source=out_source,
+                body=body,
+                index_name=index_name,
+            )
+
+    def _resolve_participant_identity(self, packet, body: dict) -> str | None:
+        if packet.participant is not None:
+            return packet.participant.identity
+        ident = body.get("participant_identity")
+        return str(ident).strip() if ident else None
+
+    async def _handle_ptt_packet(
+        self,
+        *,
+        rtc,
+        room,
+        out_source,
+        packet,
+        body: dict,
+        index_name: str,
+    ) -> None:
+        ptype = (body.get("type") or "").strip().lower()
+        pid = self._resolve_participant_identity(packet, body)
+        if not pid:
+            logger.warning("PTT packet missing participant identity")
+            return
+        if pid == self._voice_config.livekit.agent_identity:
+            return
+
+        if ptype == "start":
+            if self._turn_lock.locked():
+                await self._publish_voice_state(room, state="busy", detail="assistant_turn_in_progress")
+                return
+            self._ptt_recording[pid] = True
+            self._ptt_buffers[pid] = []
+            logger.info("PTT start participant=%s", pid)
+            return
+
+        if ptype == "end":
+            asyncio.create_task(
+                self._finalize_ptt_turn(
+                    rtc=rtc,
+                    room=room,
+                    out_source=out_source,
+                    participant_identity=pid,
+                    index_name=index_name,
+                )
+            )
+            return
+
+        logger.warning("Unknown PTT type=%s", ptype)
+
+    async def _finalize_ptt_turn(
+        self,
+        *,
+        rtc,
+        room,
+        out_source,
+        participant_identity: str,
+        index_name: str,
+    ) -> None:
+        async with self._turn_lock:
+            self._ptt_recording[participant_identity] = False
+            await asyncio.sleep(0.2)
+            chunks = self._ptt_buffers.pop(participant_identity, [])
+            pcm_blob = b"".join(chunks)
+            await self._publish_voice_state(room, state="processing")
+
+            min_bytes = 3200  # ~100ms mono int16@16k
+            if len(pcm_blob) < min_bytes:
+                logger.info("PTT end: audio too short participant=%s bytes=%s", participant_identity, len(pcm_blob))
+                await self._publish_voice_state(room, state="error", detail="no_speech_detected")
+                await self._publish_voice_state(room, state="idle")
+                return
+
+            wav_bytes = self._pcm_to_wav(pcm_blob, sample_rate=16000, channels=1)
+            participant = LiveKitParticipantContext(
+                room_name=self._voice_config.livekit.room_name,
+                participant_identity=participant_identity,
+            )
+            try:
+                result = self.process_turn(
+                    participant=participant,
+                    payload=STTInput(
+                        content=wav_bytes,
+                        encoding="wav",
+                        language=self._voice_config.stt.language,
+                    ),
+                    index_name=index_name,
+                )
+            except Exception:
+                logger.exception("process_turn failed participant=%s", participant_identity)
+                await self._publish_voice_state(room, state="error", detail="processing_failed")
+                await self._publish_voice_state(room, state="idle")
+                return
+
+            await self._publish_voice_state(room, state="speaking")
+            packet = json.dumps(
+                {
+                    "session_id": result.session_id,
+                    "user_text": result.user_text,
+                    "answer_text": result.runtime_response.answer_text,
+                    "status": result.runtime_response.status,
+                    "refusal_reason": result.runtime_response.refusal_reason,
+                    "decision_trace": result.runtime_response.decision_trace,
+                    "tts_audio_bytes": len(result.tts_output.audio),
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            await room.local_participant.publish_data(packet, reliable=True, topic=TOPIC_ASSISTANT_TEXT)
+
+            await self._publish_tts_audio(
+                rtc=rtc, out_source=out_source, tts_audio=result.tts_output.audio, tts_encoding=result.tts_output.encoding
+            )
+
+            await self._publish_voice_state(room, state="idle")
+            logger.info("PTT turn complete participant=%s", participant_identity)
+
+    async def _handle_legacy_text_packet(
+        self, *, rtc, room, out_source, body: dict, index_name: str
+    ) -> None:
+        async with self._turn_lock:
+            await self._publish_voice_state(room, state="processing")
+            participant_id = str(body.get("participant_identity") or "unknown")
+            text = body.get("text", "")
+            try:
+                result = self.process_turn(
+                    participant=LiveKitParticipantContext(
+                        room_name=self._voice_config.livekit.room_name,
+                        participant_identity=participant_id,
+                    ),
+                    payload=STTInput(content=text.encode("utf-8"), encoding="text", language=self._voice_config.stt.language),
+                    index_name=index_name,
+                )
+            except Exception:
+                logger.exception("Legacy data packet processing failed")
+                await self._publish_voice_state(room, state="error", detail="processing_failed")
+                await self._publish_voice_state(room, state="idle")
+                return
+
+            await self._publish_voice_state(room, state="speaking")
             response_body = json.dumps(
                 {
                     "session_id": result.session_id,
@@ -184,68 +386,11 @@ class LiveKitVoiceAgent:
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
-            await room.local_participant.publish_data(response_body, reliable=True, topic="assistant.text")
-        except Exception:
-            logger.exception("Failed to process livekit data packet")
-
-    async def _consume_remote_audio_track(
-        self,
-        *,
-        rtc,
-        room,
-        track,
-        participant_identity: str,
-        index_name: str,
-        out_source,
-        turn_window_seconds: float,
-        min_bytes_for_turn: int,
-    ) -> None:
-        pcm_chunks: list[bytes] = []
-        chunk_duration = 0.0
-        stream = rtc.AudioStream(track=track, sample_rate=16000, num_channels=1)
-        async for evt in stream:  # pragma: no cover
-            frame = evt.frame
-            pcm = bytes(frame.data)
-            pcm_chunks.append(pcm)
-            chunk_duration += frame.duration
-            if chunk_duration < turn_window_seconds:
-                continue
-            pcm_blob = b"".join(pcm_chunks)
-            pcm_chunks = []
-            chunk_duration = 0.0
-            if len(pcm_blob) < min_bytes_for_turn:
-                continue
-            wav_bytes = self._pcm_to_wav(
-                pcm_blob,
-                sample_rate=16000,
-                channels=1,
+            await room.local_participant.publish_data(response_body, reliable=True, topic=TOPIC_ASSISTANT_TEXT)
+            await self._publish_tts_audio(
+                rtc=rtc, out_source=out_source, tts_audio=result.tts_output.audio, tts_encoding=result.tts_output.encoding
             )
-            result = self.process_turn(
-                participant=LiveKitParticipantContext(
-                    room_name=self._voice_config.livekit.room_name,
-                    participant_identity=participant_identity,
-                ),
-                payload=STTInput(
-                    content=wav_bytes,
-                    encoding="wav",
-                    language=self._voice_config.stt.language,
-                ),
-                index_name=index_name,
-            )
-            # Publish text metadata packet for debug UI clients.
-            packet = json.dumps(
-                {
-                    "session_id": result.session_id,
-                    "user_text": result.user_text,
-                    "answer_text": result.runtime_response.answer_text,
-                    "status": result.runtime_response.status,
-                    "refusal_reason": result.runtime_response.refusal_reason,
-                    "decision_trace": result.runtime_response.decision_trace,
-                },
-                ensure_ascii=False,
-            ).encode("utf-8")
-            await room.local_participant.publish_data(packet, reliable=True, topic="assistant.text")
-            await self._publish_tts_audio(rtc=rtc, out_source=out_source, tts_audio=result.tts_output.audio, tts_encoding=result.tts_output.encoding)
+            await self._publish_voice_state(room, state="idle")
 
     async def _publish_tts_audio(self, *, rtc, out_source, tts_audio: bytes, tts_encoding: str) -> None:
         try:
@@ -262,7 +407,7 @@ class LiveKitVoiceAgent:
                 logger.warning("Unsupported TTS encoding for live publish: %s", tts_encoding)
                 return
             bytes_per_frame = channels * 2
-            samples_per_channel = max(1, len(pcm) // bytes_per_frame // 10)  # ~100ms frames
+            samples_per_channel = max(1, len(pcm) // bytes_per_frame // 10)
             frame_bytes = samples_per_channel * bytes_per_frame
             pos = 0
             while pos + frame_bytes <= len(pcm):
@@ -296,4 +441,3 @@ class LiveKitVoiceAgent:
         if not token:
             raise RuntimeError("LIVEKIT_TOKEN is required for self-hosted room connection.")
         return token
-

@@ -5,6 +5,18 @@ import pytest
 from voice_ai_banking_support_agent.voice.voice_config import load_voice_config
 
 
+@pytest.fixture(autouse=True)
+def _clear_livekit_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k in (
+        "LIVEKIT_URL",
+        "LIVEKIT_API_KEY",
+        "LIVEKIT_API_SECRET",
+        "VOICE_STT_ENDPOINT",
+        "VOICE_TTS_ENDPOINT",
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+
 def test_voice_config_defaults() -> None:
     with pytest.raises(ValueError):
         load_voice_config(None)
@@ -28,9 +40,22 @@ def test_voice_config_rejects_cloud_url(tmp_path: Path) -> None:
         load_voice_config(p)
 
 
-def test_voice_config_requires_endpoints_for_http_providers(tmp_path: Path) -> None:
+def test_voice_config_allows_http_providers_without_endpoint(tmp_path: Path) -> None:
     p = tmp_path / "voice.yaml"
     p.write_text("livekit:\n  url: ws://127.0.0.1:7880\nstt:\n  provider: http_whisper\n", encoding="utf-8")
-    with pytest.raises(ValueError):
-        load_voice_config(p)
+    cfg = load_voice_config(p)
+    assert cfg.stt.provider == "http_whisper"
+    assert not cfg.stt.endpoint
+
+
+def test_voice_config_force_mock_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOICE_USE_MOCK", "1")
+    p = tmp_path / "voice.yaml"
+    p.write_text(
+        "livekit:\n  url: ws://127.0.0.1:7880\nstt:\n  provider: http_whisper\n  endpoint: http://x/stt\n",
+        encoding="utf-8",
+    )
+    cfg = load_voice_config(p)
+    assert cfg.stt.provider == "mock"
+    assert cfg.tts.provider == "mock"
 
