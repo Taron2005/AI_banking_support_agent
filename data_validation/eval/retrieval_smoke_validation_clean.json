@@ -1,0 +1,554 @@
+[
+  {
+    "query": "What consumer loans does Ameriabank offer?",
+    "topic_filter": null,
+    "bank_filter": "ameriabank",
+    "results": [
+      {
+        "score": 0.5289,
+        "bank_key": "ameriabank",
+        "topic": "credit",
+        "source_url": "https://ameriabank.am/personal/loans",
+        "page_title": "Վարկեր | Դիմիր օնլայն | Ամերիաբանկ",
+        "section_title": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և",
+        "preview": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և\nՄենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և առաջարկում ենք վարկատեսակ, որի օգնությամբ դու կարող ես ձեռք բերել մասնակցություն և/կամ բաժնեմասնակցություն Հայաստա"
+      },
+      {
+        "score": 0.4477,
+        "bank_key": "ameriabank",
+        "topic": "credit",
+        "source_url": "https://ameriabank.am/personal/loans/consumer-loans/credit-line",
+        "page_title": "Վարկային Գիծ",
+        "section_title": "Վարկային գիծ",
+        "preview": "Վարկային գիծ\nՉնախատեսված ծախսերի, չպլանավորած գնումների դեպքում հասանելի միջոցներ ունենալու հարմարավետ տարբերակ է վարկային գիծը: Դա Բանկի կողմից քեզ տրամադրվող վարկային միջոցներ են, որոնք հասանելի են կրեդիտային քարտով: Վ"
+      },
+      {
+        "score": 0.4184,
+        "bank_key": "ameriabank",
+        "topic": "credit",
+        "source_url": "https://ameriabank.am/personal/loans",
+        "page_title": "Վարկեր | Դիմիր օնլայն | Ամերիաբանկ",
+        "section_title": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և",
+        "preview": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և\nՄենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և առաջարկում ենք վարկատեսակ, որի օգնությամբ դու կարող ես ձեռք բերել մասնակցություն և/կամ բաժնեմասնակցություն Հայաստա"
+      }
+    ]
+  },
+  {
+    "query": "What deposit options are available at ACBA?",
+    "topic_filter": null,
+    "bank_filter": "acba",
+    "results": [
+      {
+        "score": 0.6402,
+        "bank_key": "acba",
+        "topic": "deposit",
+        "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits",
+        "page_title": "Ավանդներ - Ակբա բանկ",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԱվանդներ - Ակբա բանկ    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Խնայել և կուտակել  »  Ժամկետային ավանդներ    Ժամկետային ավանդներ  Ավանդ դասակա"
+      },
+      {
+        "score": 0.6284,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/individuals/loans",
+        "page_title": "Ստանալ վարկ",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՍտանալ վարկ    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Ստանալ վարկ    Ստանալ վարկ  Առանց գրավի սպառողական վարկեր  Գրավով սպառողական վարկեր  Ար"
+      },
+      {
+        "score": 0.6087,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/business/get-a-loan",
+        "page_title": "Բիզնես Վարկեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԲիզնես Վարկեր    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Բիզնես  »  Ստանալ վարկ    Ստանալ վարկ  «Երիտասարդները բիզնեսում» ծրագիր  Բիզնես քարտով վարկային գի"
+      },
+      {
+        "score": 0.6047,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/individuals/loans/credit-lines",
+        "page_title": "Վարկային գծեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՎարկային գծեր    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Ստանալ վարկ  »  Վարկային գծեր    Վարկային գծեր  Քարտային վարկային գծեր  Ավանդի գրավով"
+      },
+      {
+        "score": 0.5269,
+        "bank_key": "acba",
+        "topic": "branch",
+        "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+        "page_title": "Բանկի մասնաճյուղերի և բանկոմատների հասցեները",
+        "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+        "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\nՍտեփանավան Գ. Նժդեհի 9 Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկադրամարկղային սպասարկում՝ 09:30-16:30 «Բերդ» մասնաճյուղ ք. Բերդ Լևոն Բեկի 1/3 Երկուշաբթիից ուրբաթ՝ "
+      }
+    ]
+  },
+  {
+    "query": "Where is the nearest IDBank branch in Yerevan?",
+    "topic_filter": null,
+    "bank_filter": "idbank",
+    "results": [
+      {
+        "score": 0.6312,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 9"
+      },
+      {
+        "score": 0.6312,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/branches/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 9"
+      },
+      {
+        "score": 0.5947,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԵրևան, Դավթաշեն 4-րդ թաղամաս, 11/91 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:15 - 17:00\r  \r Շաբ: 10:15 - 15:30\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելի"
+      },
+      {
+        "score": 0.5947,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/branches/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԵրևան, Դավթաշեն 4-րդ թաղամաս, 11/91 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:15 - 17:00\r  \r Շաբ: 10:15 - 15:30\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելի"
+      },
+      {
+        "score": 0.4801,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\n13 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:00 - 18:00\r  \r Շաբ: Հանգստյան օր\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելին  Թաքցնել  Մասնաճյուղեր  «Նոր Նոր"
+      }
+    ]
+  },
+  {
+    "query": "What is the interest rate for a deposit?",
+    "topic_filter": "deposit",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.5812,
+        "bank_key": "idbank",
+        "topic": "deposit",
+        "source_url": "https://idbank.am/deposits/",
+        "page_title": "Ավանդներ",
+        "section_title": "Առանց ավելացման իրավունքի",
+        "preview": "Առանց ավելացման իրավունքի\nՍտացիր մինչև 9․75% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9․75% Տոկոսադրույք մինչև 1096 օր Ժամկետ 10,000 ֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքում գործում է 0.15-0.5"
+      },
+      {
+        "score": 0.5752,
+        "bank_key": "idbank",
+        "topic": "deposit",
+        "source_url": "https://idbank.am/deposits/",
+        "page_title": "Ավանդներ",
+        "section_title": "Ավելացման իրավունքով",
+        "preview": "Ավելացման իրավունքով\nՍտացիր մինչև 9․05% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9.05% Տոկոսադրույք մինչև 450 օր Ժամկետ 10,000֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքում գործում է ավելի բարձր տոկ"
+      },
+      {
+        "score": 0.4723,
+        "bank_key": "acba",
+        "topic": "deposit",
+        "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits",
+        "page_title": "Ավանդներ - Ակբա բանկ",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԱվանդներ - Ակբա բանկ    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Խնայել և կուտակել  »  Ժամկետային ավանդներ    Ժամկետային ավանդներ  Ավանդ դասակա"
+      }
+    ]
+  },
+  {
+    "query": "What are the working hours of branches?",
+    "topic_filter": "branch",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.5753,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 9"
+      },
+      {
+        "score": 0.5753,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/branches/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 9"
+      },
+      {
+        "score": 0.5611,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\n13 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:00 - 18:00\r  \r Շաբ: Հանգստյան օր\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելին  Թաքցնել  Մասնաճյուղեր  «Նոր Նոր"
+      },
+      {
+        "score": 0.5611,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/branches/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\n13 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:00 - 18:00\r  \r Շաբ: Հանգստյան օր\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելին  Թաքցնել  Մասնաճյուղեր  «Նոր Նոր"
+      },
+      {
+        "score": 0.5523,
+        "bank_key": "acba",
+        "topic": "branch",
+        "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+        "page_title": "Բանկի մասնաճյուղերի և բանկոմատների հասցեները",
+        "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+        "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\nՍտեփանավան Գ. Նժդեհի 9 Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկադրամարկղային սպասարկում՝ 09:30-16:30 «Բերդ» մասնաճյուղ ք. Բերդ Լևոն Բեկի 1/3 Երկուշաբթիից ուրբաթ՝ "
+      }
+    ]
+  },
+  {
+    "query": "Does this bank offer mortgage loans?",
+    "topic_filter": "credit",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.5622,
+        "bank_key": "idbank",
+        "topic": "credit",
+        "source_url": "https://idbank.am/credits/",
+        "page_title": "Վարկեր",
+        "section_title": "Ձեռքբերում․ Բանկի սեփական միջոցներով",
+        "preview": "Ձեռքբերում․ Բանկի սեփական միջոցներով\nԳնիր քո երազանքների տունն այսօր Սկսած 12․25%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ Մինչև 125,000,000 ֏ Վարկի գումար Դիմել հիմա Ավելին IDsalary փաթեթին միանալու դեպքում վարկի ան"
+      },
+      {
+        "score": 0.5092,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/individuals/loans",
+        "page_title": "Ստանալ վարկ",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՍտանալ վարկ    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Ստանալ վարկ    Ստանալ վարկ  Առանց գրավի սպառողական վարկեր  Գրավով սպառողական վարկեր  Ար"
+      },
+      {
+        "score": 0.5042,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/individuals/loans/credit-lines",
+        "page_title": "Վարկային գծեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՎարկային գծեր    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Ստանալ վարկ  »  Վարկային գծեր    Վարկային գծեր  Քարտային վարկային գծեր  Ավանդի գրավով"
+      },
+      {
+        "score": 0.5018,
+        "bank_key": "idbank",
+        "topic": "credit",
+        "source_url": "https://idbank.am/credits/",
+        "page_title": "Վարկեր",
+        "section_title": "Ներդրումային վարկեր",
+        "preview": "Ներդրումային վարկեր\n֏-ի դեպքում սկսած անվանական 13․5%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ 2,000,000,000 ֏ կամ համարժեք արտարժույթ Վարկի առավելագույն գումար Ավելին"
+      },
+      {
+        "score": 0.4968,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/business/get-a-loan",
+        "page_title": "Բիզնես Վարկեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԲիզնես Վարկեր    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Բիզնես  »  Ստանալ վարկ    Ստանալ վարկ  «Երիտասարդները բիզնեսում» ծրագիր  Բիզնես քարտով վարկային գի"
+      }
+    ]
+  },
+  {
+    "query": "Which branches are in Gyumri?",
+    "topic_filter": "branch",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.5016,
+        "bank_key": "acba",
+        "topic": "branch",
+        "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+        "page_title": "Բանկի մասնաճյուղերի և բանկոմատների հասցեները",
+        "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+        "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\nԾաղկահովիտ Հոկտեմբերյան փ. 2/1 Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվ. սպասարկում՝ 9։30-16։30 | բացի՝ 13։00-14։00 «Արագածոտն» մասնաճյուղ ք. Աշտարակ Ն. Աշտարակեցու "
+      },
+      {
+        "score": 0.5016,
+        "bank_key": "acba",
+        "topic": "branch",
+        "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs",
+        "page_title": "Բանկի մասնաճյուղերի և բանկոմատների հասցեները",
+        "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+        "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\nԾաղկահովիտ Հոկտեմբերյան փ. 2/1 Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվ. սպասարկում՝ 9։30-16։30 | բացի՝ 13։00-14։00 «Արագածոտն» մասնաճյուղ ք. Աշտարակ Ն. Աշտարակեցու "
+      },
+      {
+        "score": 0.4761,
+        "bank_key": "acba",
+        "topic": "branch",
+        "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+        "page_title": "Բանկի մասնաճյուղերի և բանկոմատների հասցեները",
+        "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+        "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\nՍտեփանավան Գ. Նժդեհի 9 Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկադրամարկղային սպասարկում՝ 09:30-16:30 «Բերդ» մասնաճյուղ ք. Բերդ Լևոն Բեկի 1/3 Երկուշաբթիից ուրբաթ՝ "
+      },
+      {
+        "score": 0.4761,
+        "bank_key": "acba",
+        "topic": "branch",
+        "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs",
+        "page_title": "Բանկի մասնաճյուղերի և բանկոմատների հասցեները",
+        "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+        "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\nՍտեփանավան Գ. Նժդեհի 9 Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկադրամարկղային սպասարկում՝ 09:30-16:30 «Բերդ» մասնաճյուղ ք. Բերդ Լևոն Բեկի 1/3 Երկուշաբթիից ուրբաթ՝ "
+      },
+      {
+        "score": 0.4746,
+        "bank_key": "acba",
+        "topic": "branch",
+        "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+        "page_title": "Բանկի մասնաճյուղերի և բանկոմատների հասցեները",
+        "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+        "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\n«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի 1/48 առևտրի սրահ Երկ. կիր.՝ 09։00-00։00 Հաշվ. սպասարկում՝ 9։30-21։"
+      }
+    ]
+  },
+  {
+    "query": "What are deposit conditions?",
+    "topic_filter": "deposit",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.5115,
+        "bank_key": "idbank",
+        "topic": "deposit",
+        "source_url": "https://idbank.am/deposits/",
+        "page_title": "Ավանդներ",
+        "section_title": "Առանց ավելացման իրավունքի",
+        "preview": "Առանց ավելացման իրավունքի\nՍտացիր մինչև 9․75% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9․75% Տոկոսադրույք մինչև 1096 օր Ժամկետ 10,000 ֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքում գործում է 0.15-0.5"
+      },
+      {
+        "score": 0.5073,
+        "bank_key": "idbank",
+        "topic": "deposit",
+        "source_url": "https://idbank.am/deposits/",
+        "page_title": "Ավանդներ",
+        "section_title": "Ավելացման իրավունքով",
+        "preview": "Ավելացման իրավունքով\nՍտացիր մինչև 9․05% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9.05% Տոկոսադրույք մինչև 450 օր Ժամկետ 10,000֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքում գործում է ավելի բարձր տոկ"
+      },
+      {
+        "score": 0.4922,
+        "bank_key": "acba",
+        "topic": "deposit",
+        "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits",
+        "page_title": "Ավանդներ - Ակբա բանկ",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԱվանդներ - Ակբա բանկ    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Խնայել և կուտակել  »  Ժամկետային ավանդներ    Ժամկետային ավանդներ  Ավանդ դասակա"
+      }
+    ]
+  },
+  {
+    "query": "What loan term options are available?",
+    "topic_filter": "credit",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.6001,
+        "bank_key": "idbank",
+        "topic": "credit",
+        "source_url": "https://idbank.am/credits/",
+        "page_title": "Վարկեր",
+        "section_title": "Ներդրումային վարկեր",
+        "preview": "Ներդրումային վարկեր\n֏-ի դեպքում սկսած անվանական 13․5%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ 2,000,000,000 ֏ կամ համարժեք արտարժույթ Վարկի առավելագույն գումար Ավելին"
+      },
+      {
+        "score": 0.5425,
+        "bank_key": "idbank",
+        "topic": "credit",
+        "source_url": "https://idbank.am/credits/",
+        "page_title": "Վարկեր",
+        "section_title": "Ձեռքբերում․ Բանկի սեփական միջոցներով",
+        "preview": "Ձեռքբերում․ Բանկի սեփական միջոցներով\nԳնիր քո երազանքների տունն այսօր Սկսած 12․25%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ Մինչև 125,000,000 ֏ Վարկի գումար Դիմել հիմա Ավելին IDsalary փաթեթին միանալու դեպքում վարկի ան"
+      },
+      {
+        "score": 0.5259,
+        "bank_key": "idbank",
+        "topic": "credit",
+        "source_url": "https://idbank.am/credits/",
+        "page_title": "Վարկեր",
+        "section_title": "Rocket Line",
+        "preview": "Rocket Line\n0% - 21․7% Տոկոսադրույք 1-60 ամիս Մարման ժամկետ 10,000,000 ֏ Առավելագույն գումար Ավելին Օգտվիր Rocket Line 0% անտոկոս ապառիկից 1700+ վաճառակետերում"
+      },
+      {
+        "score": 0.5214,
+        "bank_key": "ameriabank",
+        "topic": "credit",
+        "source_url": "https://ameriabank.am/personal/loans/consumer-loans/credit-line",
+        "page_title": "Վարկային Գիծ",
+        "section_title": "Վարկային գիծ",
+        "preview": "Վարկային գիծ\nՉնախատեսված ծախսերի, չպլանավորած գնումների դեպքում հասանելի միջոցներ ունենալու հարմարավետ տարբերակ է վարկային գիծը: Դա Բանկի կողմից քեզ տրամադրվող վարկային միջոցներ են, որոնք հասանելի են կրեդիտային քարտով: Վ"
+      },
+      {
+        "score": 0.5037,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/individuals/loans/credit-lines",
+        "page_title": "Վարկային գծեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՎարկային գծեր    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Ստանալ վարկ  »  Վարկային գծեր    Վարկային գծեր  Քարտային վարկային գծեր  Ավանդի գրավով"
+      }
+    ]
+  },
+  {
+    "query": "Վարկային գիծ ինչ պայմաններով է տրվում?",
+    "topic_filter": "credit",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.768,
+        "bank_key": "ameriabank",
+        "topic": "credit",
+        "source_url": "https://ameriabank.am/personal/loans/consumer-loans/credit-line",
+        "page_title": "Վարկային Գիծ",
+        "section_title": "Վարկային գիծ",
+        "preview": "Վարկային գիծ\nՉնախատեսված ծախսերի, չպլանավորած գնումների դեպքում հասանելի միջոցներ ունենալու հարմարավետ տարբերակ է վարկային գիծը: Դա Բանկի կողմից քեզ տրամադրվող վարկային միջոցներ են, որոնք հասանելի են կրեդիտային քարտով: Վ"
+      },
+      {
+        "score": 0.6849,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/individuals/loans/credit-lines",
+        "page_title": "Վարկային գծեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՎարկային գծեր    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Ստանալ վարկ  »  Վարկային գծեր    Վարկային գծեր  Քարտային վարկային գծեր  Ավանդի գրավով"
+      },
+      {
+        "score": 0.5957,
+        "bank_key": "idbank",
+        "topic": "credit",
+        "source_url": "https://idbank.am/credits/",
+        "page_title": "Վարկեր",
+        "section_title": "Ներդրումային վարկեր",
+        "preview": "Ներդրումային վարկեր\n֏-ի դեպքում սկսած անվանական 13․5%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ 2,000,000,000 ֏ կամ համարժեք արտարժույթ Վարկի առավելագույն գումար Ավելին"
+      },
+      {
+        "score": 0.5594,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/business/get-a-loan",
+        "page_title": "Բիզնես Վարկեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԲիզնես Վարկեր    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Բիզնես  »  Ստանալ վարկ    Ստանալ վարկ  «Երիտասարդները բիզնեսում» ծրագիր  Բիզնես քարտով վարկային գի"
+      },
+      {
+        "score": 0.558,
+        "bank_key": "acba",
+        "topic": "credit",
+        "source_url": "https://www.acba.am/hy/individuals/loans",
+        "page_title": "Ստանալ վարկ",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՍտանալ վարկ    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Ստանալ վարկ    Ստանալ վարկ  Առանց գրավի սպառողական վարկեր  Գրավով սպառողական վարկեր  Ար"
+      }
+    ]
+  },
+  {
+    "query": "Ավանդի պայմանները որոնք են?",
+    "topic_filter": "deposit",
+    "bank_filter": null,
+    "results": [
+      {
+        "score": 0.5733,
+        "bank_key": "acba",
+        "topic": "deposit",
+        "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits",
+        "page_title": "Ավանդներ - Ակբա բանկ",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԱվանդներ - Ակբա բանկ    acba digital  Կապ մեզ հետ  feedback   Զանգել այստեղից  Հեռախոսազանգի պատվեր  Փակել  Գլխավոր  »  Անհատներ  »  Խնայել և կուտակել  »  Ժամկետային ավանդներ    Ժամկետային ավանդներ  Ավանդ դասակա"
+      },
+      {
+        "score": 0.5653,
+        "bank_key": "idbank",
+        "topic": "deposit",
+        "source_url": "https://idbank.am/deposits/",
+        "page_title": "Ավանդներ",
+        "section_title": "Առանց ավելացման իրավունքի",
+        "preview": "Առանց ավելացման իրավունքի\nՍտացիր մինչև 9․75% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9․75% Տոկոսադրույք մինչև 1096 օր Ժամկետ 10,000 ֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքում գործում է 0.15-0.5"
+      },
+      {
+        "score": 0.5566,
+        "bank_key": "idbank",
+        "topic": "deposit",
+        "source_url": "https://idbank.am/deposits/",
+        "page_title": "Ավանդներ",
+        "section_title": "Ավելացման իրավունքով",
+        "preview": "Ավելացման իրավունքով\nՍտացիր մինչև 9․05% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9.05% Տոկոսադրույք մինչև 450 օր Ժամկետ 10,000֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքում գործում է ավելի բարձր տոկ"
+      }
+    ]
+  },
+  {
+    "query": "IDBank մասնաճյուղերի աշխատանքային ժամերը",
+    "topic_filter": "branch",
+    "bank_filter": "idbank",
+    "results": [
+      {
+        "score": 0.7379,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 9"
+      },
+      {
+        "score": 0.7379,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/branches/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 9"
+      },
+      {
+        "score": 0.7167,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԵրևան, Դավթաշեն 4-րդ թաղամաս, 11/91 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:15 - 17:00\r  \r Շաբ: 10:15 - 15:30\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելի"
+      },
+      {
+        "score": 0.7167,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/branches/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\nԵրևան, Դավթաշեն 4-րդ թաղամաս, 11/91 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:15 - 17:00\r  \r Շաբ: 10:15 - 15:30\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելի"
+      },
+      {
+        "score": 0.5991,
+        "bank_key": "idbank",
+        "topic": "branch",
+        "source_url": "https://idbank.am/information/about/branches-and-atms/",
+        "page_title": "Մասնաճյուղեր",
+        "section_title": "Untitled",
+        "preview": "Untitled\n13 շենք  Աշխատանքային ժամերը  \r Երկ – Ուրբ: 09:00 - 18:00\r  \r Շաբ: Հանգստյան օր\r  \r Կիր: Հանգստյան օր\r    Հեռախոսահամարներ  +374 10 593333  +374 60 273333  +374 12 333333  Ավելին  Թաքցնել  Մասնաճյուղեր  «Նոր Նոր"
+      }
+    ]
+  }
+]

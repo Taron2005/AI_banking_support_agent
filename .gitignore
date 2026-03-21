@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+ENV/
+.env
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (React demo)
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/.env
+frontend-react/.env.local
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Secrets (never commit)
+*.pem
+*API_KEY*.txt
+
+# Optional: uncomment if the repo is too large for GitHub (use Git LFS or release assets)
+# data/raw_html/
+# data/index/**/*.index

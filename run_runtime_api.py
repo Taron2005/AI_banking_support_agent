@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+import argparse
+
+import uvicorn
+
+from voice_ai_banking_support_agent.runtime.api import build_app
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Run runtime FastAPI server")
+    p.add_argument("--project-root", type=str, default=".")
+    p.add_argument("--config", type=str, default="demo_config.yaml")
+    p.add_argument("--runtime-config", type=str, default="runtime_config.yaml")
+    p.add_argument("--llm-config", type=str, default="llm_config.example.yaml")
+    p.add_argument("--host", type=str, default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8000)
+    args = p.parse_args()
+
+    app = build_app(
+        project_root=args.project_root,
+        config_path=args.config,
+        runtime_config_path=args.runtime_config,
+        llm_config_path=args.llm_config,
+    )
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    main()
+

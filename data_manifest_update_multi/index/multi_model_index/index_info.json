@@ -1,0 +1,5 @@
+{
+  "index_name": "multi_model_index",
+  "embedding_dim": 768,
+  "vector_count": 99
+}

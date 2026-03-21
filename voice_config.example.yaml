@@ -1,0 +1,36 @@
+livekit:
+  url: "ws://127.0.0.1:7880"
+  api_key: "devkey"
+  api_secret: "secret"
+  room_name: "banking-support-room"
+  agent_identity: "banking-support-agent"
+  participant_identity_prefix: "user"
+
+stt:
+  # mock | http_whisper
+  provider: "mock"
+  language: "hy-AM"
+  endpoint: null
+  timeout_seconds: 20
+  api_key: null
+  api_key_header: "Authorization"
+  response_text_field: "text"
+  fallback_to_mock: true
+
+tts:
+  # mock | http_tts
+  provider: "mock"
+  language: "hy-AM"
+  voice_name: "default"
+  output_encoding: "wav"
+  endpoint: null
+  timeout_seconds: 20
+  api_key: null
+  api_key_header: "Authorization"
+  response_audio_field: "audio_base64"
+  fallback_to_mock: true
+
+behavior:
+  debug: true
+  verbose_trace: true
+  max_response_chars: 1800

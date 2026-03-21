@@ -1,0 +1,8 @@
+data_dir: data_manifest_update_hy
+raw_html_dir: data_manifest_update_hy/raw_html
+branches_dir: data_manifest_update_hy/branches
+cleaned_docs_dir: data_manifest_update_hy/cleaned_docs
+chunks_dir: data_manifest_update_hy/chunks
+index_dir: data_manifest_update_hy/index
+reuse_raw_html: false
+embedding_model_name: Metric-AI/armenian-text-embeddings-2-large

@@ -1,0 +1,50 @@
+[project]
+name = "voice-ai-banking-support-agent"
+version = "0.1.0"
+description = "Offline ingestion + indexing pipeline for an Armenian voice AI banking support agent (RAG-ready)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.32.0",
+  "beautifulsoup4>=4.12.3",
+  "lxml>=5.2.2",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.6.1",
+  "pyyaml>=6.0.2",
+  "tenacity>=9.0.0",
+  "sentence-transformers>=3.0.1",
+  "faiss-cpu>=1.8.0",
+  "numpy>=1.26.0",
+  "tqdm>=4.67.0",
+]
+
+[build-system]
+requires = ["setuptools>=69.0.0", "wheel>=0.43.0"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+playwright = ["playwright>=1.45.0"]
+voice = [
+  "livekit>=0.11.0",
+]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-cov>=5.0.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["voice_ai_banking_support_agent*"]
+

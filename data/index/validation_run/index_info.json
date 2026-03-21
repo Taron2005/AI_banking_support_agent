@@ -1,0 +1,5 @@
+{
+  "index_name": "validation_run",
+  "embedding_dim": 1024,
+  "vector_count": 39
+}

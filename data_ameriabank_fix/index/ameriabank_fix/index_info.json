@@ -1,0 +1,5 @@
+{
+  "index_name": "ameriabank_fix",
+  "embedding_dim": 1024,
+  "vector_count": 66
+}

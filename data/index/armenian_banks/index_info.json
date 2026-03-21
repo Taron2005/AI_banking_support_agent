@@ -1,0 +1,5 @@
+{
+  "index_name": "armenian_banks",
+  "embedding_dim": 1024,
+  "vector_count": 24
+}

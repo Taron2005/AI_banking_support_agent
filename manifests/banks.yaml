@@ -1,0 +1,66 @@
+schema_version: "1"
+banks:
+  - bank_key: "acba"
+    bank_name: "ACBA Bank"
+    language: "hy"
+    credits:
+      urls:
+        - "https://www.acba.am/hy/individuals/loans"
+        - "https://www.acba.am/hy/individuals/loans/credit-lines"
+        - "https://www.acba.am/hy/business/get-a-loan"
+    deposits:
+      urls:
+        - "https://www.acba.am/hy/individuals/save-and-invest/deposits"
+        - "https://www.acba.am/hy/individuals/save-and-invest/deposits/classic"
+        - "https://www.acba.am/hy/individuals/save-and-invest/deposits/family"
+        - "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children"
+    branches:
+      urls:
+        - "https://www.acba.am/hy/about-bank/Branches-and-ATMs"
+        - "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches"
+
+  - bank_key: "ameriabank"
+    bank_name: "Ameriabank"
+    language: "hy"
+    credits:
+      urls:
+        - "https://ameriabank.am/personal/loans"
+        - "https://ameriabank.am/personal/loans/consumer-loans/consumer-loans"
+        - "https://ameriabank.am/personal/loans/consumer-loans/credit-line"
+        - "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft"
+        - "https://ameriabank.am/en/personal/loans/car-loans"
+        - "https://ameriabank.am/en/personal/loans/car-loan/primary"
+        - "https://ameriabank.am/en/personal/loans/car-loan/secondary-market"
+        - "https://ameriabank.am/en/personal/loans/car-loan/without-bank-visit"
+        - "https://ameriabank.am/en/personal/loans/other-loans/investment-loan"
+    deposits:
+      urls:
+        - "https://ameriabank.am/personal/saving/deposits/see-all"
+        - "https://ameriabank.am/personal/saving/deposits/ameria-deposit"
+        - "https://ameriabank.am/personal/saving/deposits/cumulative-deposit"
+        - "https://ameriabank.am/en/personal/savings/deposits/leaflets"
+        - "https://ameriabank.am/Portals/0/files/Personal/Leaflet_deposit_amd_eng.pdf"
+    branches:
+      urls:
+        - "https://ameriabank.am/service-network"
+        - "https://ameriabank.am/service-network?TabId=3420&language=hy-AM"
+        - "https://ameriabank.am/en/service-network"
+        - "https://ameriabank.am/en/contact-us"
+
+  - bank_key: "idbank"
+    bank_name: "IDBank"
+    language: "hy"
+    credits:
+      urls:
+        - "https://idbank.am/credits/"
+        - "https://idbank.am/en/credits/loans-without-collateral/credit-lines/"
+    deposits:
+      urls:
+        - "https://idbank.am/deposits/"
+        - "https://idbank.am/en/deposits/"
+        - "https://idbank.am/en/deposits/deposit_safe/noreplenish/"
+        - "https://idbank.am/en/deposits/demand/demand/"
+    branches:
+      urls:
+        - "https://idbank.am/information/about/branches-and-atms/branches/"
+        - "https://idbank.am/information/about/branches-and-atms/"

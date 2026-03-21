@@ -1,0 +1,8 @@
+data_dir: data_manifest_update_multi
+raw_html_dir: data_manifest_update_multi/raw_html
+branches_dir: data_manifest_update_multi/branches
+cleaned_docs_dir: data_manifest_update_multi/cleaned_docs
+chunks_dir: data_manifest_update_multi/chunks
+index_dir: data_manifest_update_multi/index
+reuse_raw_html: false
+embedding_model_name: sentence-transformers/paraphrase-multilingual-mpnet-base-v2

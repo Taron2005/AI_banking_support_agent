@@ -1,0 +1,6 @@
+provider: "gemini_rest"  # gemini_rest | mock | openai_compatible_http
+endpoint: null           # optional override, default is Google Gemini REST URL
+api_key: null            # set Gemini API key here or via LLM_GEMINI_API_KEY
+model: "gemini-2.0-flash"
+timeout_seconds: 25
+temperature: 0.1

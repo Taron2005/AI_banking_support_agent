@@ -1,0 +1,550 @@
+{
+  "summary": {
+    "queries": 11,
+    "non_empty": 10,
+    "top1_topic_hit": 10,
+    "top1_bank_hit_when_expected": 10
+  },
+  "items": [
+    {
+      "query": "What consumer loans does Ameriabank offer?",
+      "filters": {
+        "topic": null,
+        "bank": "ameriabank"
+      },
+      "expect": {
+        "topic": "credit",
+        "bank": "ameriabank"
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.6383,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/en/personal/loans/other-loans/investment-loan",
+          "section_title": "Consumer lending is a good choice if you",
+          "preview": "Consumer lending is a good choice if you\nConsumer lending is a good choice if you are planning to make purchases or payments in cash and repay the loan in equal monthly installments. Buying an apartme"
+        },
+        {
+          "score": 0.6242,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/personal/loans/consumer-loans/consumer-loans",
+          "section_title": "Սպառողական վարկ",
+          "preview": "Սպառողական վարկ\nՉնախատեսված անձնական և ընտանեկան ծախսերի դեպքում սպառողական վարկավորումը քեզ անհրաժեշտ լուծումն է: Այս վարկատեսակը քեզ հարմար է, եթե ստացած գումարը նախատեսում ես ծախսել կանխիկ տարբերակ"
+        },
+        {
+          "score": 0.6233,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/en/personal/loans/other-loans/investment-loan",
+          "section_title": "Consumer lending is a good choice if you",
+          "preview": "Consumer lending is a good choice if you\nConsumer lending is a good choice if you are planning to make purchases or payments in cash and repay the loan in equal monthly installments."
+        },
+        {
+          "score": 0.5642,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/personal/loans/consumer-loans/credit-line",
+          "section_title": "Վարկային գիծ",
+          "preview": "Վարկային գիծ\nՉնախատեսված ծախսերի, չպլանավորած գնումների դեպքում հասանելի միջոցներ ունենալու հարմարավետ տարբերակ է վարկային գիծը: Դա Բանկի կողմից քեզ տրամադրվող վարկային միջոցներ են, որոնք հասանելի են "
+        },
+        {
+          "score": 0.5512,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/personal/loans",
+          "section_title": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և",
+          "preview": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և\nՄենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և առաջարկում ենք վարկատեսակ, որի օգնությամբ դու կարող ես ձեռք բերել մասնակցություն և/կամ բաժնեմա"
+        }
+      ]
+    },
+    {
+      "query": "What deposit options are available at ACBA?",
+      "filters": {
+        "topic": "deposit",
+        "bank": "acba"
+      },
+      "expect": {
+        "topic": "deposit",
+        "bank": "acba"
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.5897,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "տեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում -",
+          "preview": "տեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում -\nտեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում - բանկի մասնաճյուղում հայտի ներկայացմանը հաջորդող աշխատանքային օրվա ընթացք"
+        },
+        {
+          "score": 0.5897,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/family",
+          "section_title": "տեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում -",
+          "preview": "տեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում -\nտեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում - բանկի մասնաճյուղում հայտի ներկայացմանը հաջորդող աշխատանքային օրվա ընթացք"
+        },
+        {
+          "score": 0.5897,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/classic",
+          "section_title": "տեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում -",
+          "preview": "տեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում -\nտեղեկանքի ստացման դիմումի հաջորդ աշխատանքային օրերի ընթացքում - բանկի մասնաճյուղում հայտի ներկայացմանը հաջորդող աշխատանքային օրվա ընթացք"
+        },
+        {
+          "score": 0.5167,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "նույն աշխատանքային օրը 1 ժամվա ընթացքում – 5,000",
+          "preview": "նույն աշխատանքային օրը 1 ժամվա ընթացքում – 5,000\nնույն աշխատանքային օրը 1 ժամվա ընթացքում – 5,000 ՀՀ դրամ, acba digital համակարգով դիմելու դեպքում՝ 4,000 ՀՀ դրամ (ներառյալ` ԱԱՀ)։"
+        },
+        {
+          "score": 0.5167,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/family",
+          "section_title": "նույն աշխատանքային օրը 1 ժամվա ընթացքում – 5,000",
+          "preview": "նույն աշխատանքային օրը 1 ժամվա ընթացքում – 5,000\nնույն աշխատանքային օրը 1 ժամվա ընթացքում – 5,000 ՀՀ դրամ, acba digital համակարգով դիմելու դեպքում՝ 4,000 ՀՀ դրամ (ներառյալ` ԱԱՀ)։"
+        }
+      ]
+    },
+    {
+      "query": "Where is the nearest IDBank branch in Yerevan?",
+      "filters": {
+        "topic": "branch",
+        "bank": "idbank"
+      },
+      "expect": {
+        "topic": "branch",
+        "bank": "idbank"
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.466,
+          "bank_key": "idbank",
+          "topic": "branch",
+          "source_url": "https://idbank.am/information/about/branches-and-atms/",
+          "section_title": "Untitled",
+          "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամ"
+        },
+        {
+          "score": 0.466,
+          "bank_key": "idbank",
+          "topic": "branch",
+          "source_url": "https://idbank.am/information/about/branches-and-atms/branches/",
+          "section_title": "Untitled",
+          "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամ"
+        }
+      ]
+    },
+    {
+      "query": "What are the working hours of Ameriabank branches?",
+      "filters": {
+        "topic": "branch",
+        "bank": "ameriabank"
+      },
+      "expect": {
+        "topic": "branch",
+        "bank": "ameriabank"
+      },
+      "top_topic_ok": false,
+      "top_bank_ok": false,
+      "results": []
+    },
+    {
+      "query": "What deposit conditions are available?",
+      "filters": {
+        "topic": "deposit",
+        "bank": null
+      },
+      "expect": {
+        "topic": "deposit",
+        "bank": null
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.7199,
+          "bank_key": "idbank",
+          "topic": "deposit",
+          "source_url": "https://idbank.am/en/deposits/",
+          "section_title": "Demand deposit",
+          "preview": "Demand deposit\nGet advantage of non-term deposits up to 0.01% Interest rate Not defined Terms 30,000 ֏ Minimal amount Apply now More detail"
+        },
+        {
+          "score": 0.6624,
+          "bank_key": "idbank",
+          "topic": "deposit",
+          "source_url": "https://idbank.am/en/deposits/",
+          "section_title": "With the right to replenish",
+          "preview": "With the right to replenish\nGet up to 9.5% annual interest rate with \"Safe\" deposit up to 9.05% Interest rate up to 450 days Terms 10,000 ֏ Minimal amount Apply now More detail"
+        },
+        {
+          "score": 0.6559,
+          "bank_key": "idbank",
+          "topic": "deposit",
+          "source_url": "https://idbank.am/en/deposits/",
+          "section_title": "Without the right to replenish",
+          "preview": "Without the right to replenish\nGet up to 9․75% annual interest rate with \"Safe\" deposit up to 9․75% Interest rate up to 1096 days Terms 10,000 ֏ Minimal amount Apply now More detail"
+        },
+        {
+          "score": 0.6412,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "հայտարարություն",
+          "preview": "հայտարարություն\nՈրոշակի ժամկետի ավարտից կամ պայմանագրում նախատեսված հանգամանքների վրա հասնելուց հետո հետ ստանալու պայմանով ներդրված ավանդի պայմանագրով որոշված տոկոսագումարների չափը Բանկը չի կարող միակ"
+        },
+        {
+          "score": 0.6412,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/family",
+          "section_title": "հայտարարություն",
+          "preview": "հայտարարություն\nՈրոշակի ժամկետի ավարտից կամ պայմանագրում նախատեսված հանգամանքների վրա հասնելուց հետո հետ ստանալու պայմանով ներդրված ավանդի պայմանագրով որոշված տոկոսագումարների չափը Բանկը չի կարող միակ"
+        }
+      ]
+    },
+    {
+      "query": "Does this bank offer mortgage loans?",
+      "filters": {
+        "topic": "credit",
+        "bank": null
+      },
+      "expect": {
+        "topic": "credit",
+        "bank": null
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.5285,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/en/personal/loans/other-loans/investment-loan",
+          "section_title": "Consumer lending is a good choice if you",
+          "preview": "Consumer lending is a good choice if you\nConsumer lending is a good choice if you are planning to make purchases or payments in cash and repay the loan in equal monthly installments. Buying an apartme"
+        },
+        {
+          "score": 0.5223,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/personal/loans/consumer-loans/consumer-loans",
+          "section_title": "Սպառողական վարկ",
+          "preview": "Սպառողական վարկ\nՉնախատեսված անձնական և ընտանեկան ծախսերի դեպքում սպառողական վարկավորումը քեզ անհրաժեշտ լուծումն է: Այս վարկատեսակը քեզ հարմար է, եթե ստացած գումարը նախատեսում ես ծախսել կանխիկ տարբերակ"
+        },
+        {
+          "score": 0.4843,
+          "bank_key": "idbank",
+          "topic": "credit",
+          "source_url": "https://idbank.am/credits/",
+          "section_title": "Ներդրումային վարկեր",
+          "preview": "Ներդրումային վարկեր\n֏-ի դեպքում սկսած անվանական 13․5%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ 2,000,000,000 ֏ կամ համարժեք արտարժույթ Վարկի առավելագույն գումար Ավելին"
+        },
+        {
+          "score": 0.4769,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/personal/loans/consumer-loans/credit-line",
+          "section_title": "Վարկային գիծ",
+          "preview": "Վարկային գիծ\nՉնախատեսված ծախսերի, չպլանավորած գնումների դեպքում հասանելի միջոցներ ունենալու հարմարավետ տարբերակ է վարկային գիծը: Դա Բանկի կողմից քեզ տրամադրվող վարկային միջոցներ են, որոնք հասանելի են "
+        },
+        {
+          "score": 0.4673,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/en/personal/loans/other-loans/investment-loan",
+          "section_title": "Consumer lending is a good choice if you",
+          "preview": "Consumer lending is a good choice if you\nConsumer lending is a good choice if you are planning to make purchases or payments in cash and repay the loan in equal monthly installments."
+        }
+      ]
+    },
+    {
+      "query": "Which branches are in Gyumri?",
+      "filters": {
+        "topic": "branch",
+        "bank": null
+      },
+      "expect": {
+        "topic": "branch",
+        "bank": null
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.2992,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+          "section_title": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի",
+          "preview": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի\nՄարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի 1/48 առևտրի սրահ Երկ. կիր.՝ 09։00-00։00 Հաշվ. սպասարկում՝ 9։30-21։00 | բացի՝ 13։00"
+        },
+        {
+          "score": 0.2992,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs",
+          "section_title": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի",
+          "preview": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի\nՄարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի 1/48 առևտրի սրահ Երկ. կիր.՝ 09։00-00։00 Հաշվ. սպասարկում՝ 9։30-21։00 | բացի՝ 13։00"
+        },
+        {
+          "score": 0.2766,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+          "section_title": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք",
+          "preview": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք\n«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք և Աբովյան 22 շենք, թիվ 1/1 տարածք Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկ"
+        },
+        {
+          "score": 0.2766,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs",
+          "section_title": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք",
+          "preview": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք\n«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք և Աբովյան 22 շենք, թիվ 1/1 տարածք Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկ"
+        },
+        {
+          "score": 0.2338,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+          "section_title": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք",
+          "preview": "«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք\n«Հոմպլեքս մոլ» մասնաճյուղ գ. Պռոշյան Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի 1/48 առևտրի սրահ Երկ. կիր.՝ 09։00-00։00 Հաշվ. "
+        }
+      ]
+    },
+    {
+      "query": "Ավանդի տոկոսադրույքը ինչքա՞ն է",
+      "filters": {
+        "topic": "deposit",
+        "bank": null
+      },
+      "expect": {
+        "topic": "deposit",
+        "bank": null
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.7516,
+          "bank_key": "idbank",
+          "topic": "deposit",
+          "source_url": "https://idbank.am/deposits/",
+          "section_title": "Ավելացման իրավունքով",
+          "preview": "Ավելացման իրավունքով\nՍտացիր մինչև 9․05% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9.05% Տոկոսադրույք մինչև 450 օր Ժամկետ 10,000֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքում գործո"
+        },
+        {
+          "score": 0.7089,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "հավելագրվում են",
+          "preview": "հավելագրվում են\nՏոկոսագումարները տարեկան կտրվածքով հավելագրվում են ավանդի գումարին, ինչի արդյունքում տոկոսադրույքը հաշվարկվում է ավանդի գումարի և ավելացված տոկոսագումարի նկատմամբ՝ ապահովելով բարձր տոկ"
+        },
+        {
+          "score": 0.7087,
+          "bank_key": "idbank",
+          "topic": "deposit",
+          "source_url": "https://idbank.am/deposits/",
+          "section_title": "Առանց ավելացման իրավունքի",
+          "preview": "Առանց ավելացման իրավունքի\nՍտացիր մինչև 9․75% տարեկան եկամուտ «Ապահով» ավանդով մինչև 9․75% Տոկոսադրույք մինչև 1096 օր Ժամկետ 10,000 ֏ Նվազագույն գումար Թողնել հայտ Ավելին Ավանդն առցանց ներդնելու դեպքու"
+        },
+        {
+          "score": 0.673,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "Արտարժույթով",
+          "preview": "Արտարժույթով\nԱրտարժույթով ներդրված ավանդների դիմաց հաշվարկված տոկոսագումարները վճարվում են ՀՀ դրամով ՝ ՀՀ ԿԲ կողմից հրապարակված տվյալ օրվա միջին փոխարժեքով։ Հաճախորդի ցանկությամբ տոկոսագումարները կարո"
+        },
+        {
+          "score": 0.673,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/family",
+          "section_title": "Արտարժույթով",
+          "preview": "Արտարժույթով\nԱրտարժույթով ներդրված ավանդների դիմաց հաշվարկված տոկոսագումարները վճարվում են ՀՀ դրամով ՝ ՀՀ ԿԲ կողմից հրապարակված տվյալ օրվա միջին փոխարժեքով։ Հաճախորդի ցանկությամբ տոկոսագումարները կարո"
+        }
+      ]
+    },
+    {
+      "query": "Որտե՞ղ է մոտակա մասնաճյուղը",
+      "filters": {
+        "topic": "branch",
+        "bank": null
+      },
+      "expect": {
+        "topic": "branch",
+        "bank": null
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.3841,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+          "section_title": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք",
+          "preview": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք\n«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք և Աբովյան 22 շենք, թիվ 1/1 տարածք Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկ"
+        },
+        {
+          "score": 0.3841,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs",
+          "section_title": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք",
+          "preview": "«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք\n«Սայաթ-Նովա» մասնաճյուղ ք.Երևան Սայաթ-Նովա 8 շենք, 21/1 տարածք և Աբովյան 22 շենք, թիվ 1/1 տարածք Երկուշաբթիից ուրբաթ՝ 09:30-17:30 Հաշվարկ"
+        },
+        {
+          "score": 0.3739,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs/Branches",
+          "section_title": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի",
+          "preview": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի\nՄարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի 1/48 առևտրի սրահ Երկ. կիր.՝ 09։00-00։00 Հաշվ. սպասարկում՝ 9։30-21։00 | բացի՝ 13։00"
+        },
+        {
+          "score": 0.3739,
+          "bank_key": "acba",
+          "topic": "branch",
+          "source_url": "https://www.acba.am/hy/about-bank/Branches-and-ATMs",
+          "section_title": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի",
+          "preview": "Մարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի\nՄարզ Կոտայք, համայնք Նաիրի, գյուղ Պռոշյան, Գ.Չաուշի խճուղի 1/48 առևտրի սրահ Երկ. կիր.՝ 09։00-00։00 Հաշվ. սպասարկում՝ 9։30-21։00 | բացի՝ 13։00"
+        },
+        {
+          "score": 0.2158,
+          "bank_key": "idbank",
+          "topic": "branch",
+          "source_url": "https://idbank.am/information/about/branches-and-atms/",
+          "section_title": "Untitled",
+          "preview": "Untitled\nՄասնաճյուղեր  Հեշտացրու կյանքդ, ներբեռնիր Idram&IDBank հավելվածը  Ներբեռնել  Ավելին  Այլևս չցուցադրել  Մասնաճյուղեր  «Արաբկիր» մասնաճյուղ  ՀՀ, ք. Երևան, Կոմիտասի պող. 56/162  Աշխատանքային ժամ"
+        }
+      ]
+    },
+    {
+      "query": "Սպառողական վարկի պայմանները որոնք են",
+      "filters": {
+        "topic": "credit",
+        "bank": null
+      },
+      "expect": {
+        "topic": "credit",
+        "bank": null
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.6892,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/personal/loans/consumer-loans/consumer-loans",
+          "section_title": "Սպառողական վարկ",
+          "preview": "Սպառողական վարկ\nՉնախատեսված անձնական և ընտանեկան ծախսերի դեպքում սպառողական վարկավորումը քեզ անհրաժեշտ լուծումն է: Այս վարկատեսակը քեզ հարմար է, եթե ստացած գումարը նախատեսում ես ծախսել կանխիկ տարբերակ"
+        },
+        {
+          "score": 0.6725,
+          "bank_key": "idbank",
+          "topic": "credit",
+          "source_url": "https://idbank.am/credits/",
+          "section_title": "Ներդրումային վարկեր",
+          "preview": "Ներդրումային վարկեր\n֏-ի դեպքում սկսած անվանական 13․5%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ 2,000,000,000 ֏ կամ համարժեք արտարժույթ Վարկի առավելագույն գումար Ավելին"
+        },
+        {
+          "score": 0.5879,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/personal/loans",
+          "section_title": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և",
+          "preview": "Մենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և\nՄենք ստեղծել ենք քեզ համար բացառիկ հնարավորություն և առաջարկում ենք վարկատեսակ, որի օգնությամբ դու կարող ես ձեռք բերել մասնակցություն և/կամ բաժնեմա"
+        },
+        {
+          "score": 0.5789,
+          "bank_key": "ameriabank",
+          "topic": "credit",
+          "source_url": "https://ameriabank.am/en/personal/loans/other-loans/investment-loan",
+          "section_title": "Consumer lending is a good choice if you",
+          "preview": "Consumer lending is a good choice if you\nConsumer lending is a good choice if you are planning to make purchases or payments in cash and repay the loan in equal monthly installments."
+        },
+        {
+          "score": 0.5729,
+          "bank_key": "idbank",
+          "topic": "credit",
+          "source_url": "https://idbank.am/credits/",
+          "section_title": "Ձեռքբերում․ Բանկի սեփական միջոցներով",
+          "preview": "Ձեռքբերում․ Բանկի սեփական միջոցներով\nԳնիր քո երազանքների տունն այսօր Սկսած 12․25%-ից Տոկոսադրույք Մինչև 240 ամիս Մարման ժամկետ Մինչև 125,000,000 ֏ Վարկի գումար Դիմել հիմա Ավելին IDsalary փաթեթին միանա"
+        }
+      ]
+    },
+    {
+      "query": "Ինչ ավանդներ ունի բանկը",
+      "filters": {
+        "topic": "deposit",
+        "bank": null
+      },
+      "expect": {
+        "topic": "deposit",
+        "bank": null
+      },
+      "top_topic_ok": true,
+      "top_bank_ok": true,
+      "results": [
+        {
+          "score": 0.6747,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "հայտարարություն",
+          "preview": "հայտարարություն\nՈրոշակի ժամկետի ավարտից կամ պայմանագրում նախատեսված հանգամանքների վրա հասնելուց հետո հետ ստանալու պայմանով ներդրված ավանդի պայմանագրով որոշված տոկոսագումարների չափը Բանկը չի կարող միակ"
+        },
+        {
+          "score": 0.6747,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/family",
+          "section_title": "հայտարարություն",
+          "preview": "հայտարարություն\nՈրոշակի ժամկետի ավարտից կամ պայմանագրում նախատեսված հանգամանքների վրա հասնելուց հետո հետ ստանալու պայմանով ներդրված ավանդի պայմանագրով որոշված տոկոսագումարների չափը Բանկը չի կարող միակ"
+        },
+        {
+          "score": 0.6626,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "ժամկետից շուտ",
+          "preview": "ժամկետից շուտ\nԺամկետային ավանդի պայմանագրով սահմանված ժամկետից շուտ գրավոր ձևով դրամային և/կամ արտարժութային ավանդը Բանկից պահանջելու դեպքում 1 բանկային օրվա ընթացքում ավանդատուին կվճարվի ավանդի գումա"
+        },
+        {
+          "score": 0.6626,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/family",
+          "section_title": "ժամկետից շուտ",
+          "preview": "ժամկետից շուտ\nԺամկետային ավանդի պայմանագրով սահմանված ժամկետից շուտ գրավոր ձևով դրամային և/կամ արտարժութային ավանդը Բանկից պահանջելու դեպքում 1 բանկային օրվա ընթացքում ավանդատուին կվճարվի ավանդի գումա"
+        },
+        {
+          "score": 0.6409,
+          "bank_key": "acba",
+          "topic": "deposit",
+          "source_url": "https://www.acba.am/hy/individuals/save-and-invest/deposits/for-children",
+          "section_title": "Բանկն իրավունք ունի միակողմանիորեն փոփոխել բանկային հաշվում եղած",
+          "preview": "Բանկն իրավունք ունի միակողմանիորեն փոփոխել բանկային հաշվում եղած\nԲանկն իրավունք ունի միակողմանիորեն փոփոխել բանկային հաշվում եղած դրամական միջոցների համար վճարվող տոկոսների չափը։ Այն դեպքում, երբ նախա"
+        }
+      ]
+    }
+  ]
+}
