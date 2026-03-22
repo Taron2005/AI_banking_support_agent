@@ -22,7 +22,7 @@ class STTSettings(BaseModel):
     provider: Literal["mock", "http_whisper"] = "http_whisper"
     language: str = "hy"
     endpoint: str | None = None
-    timeout_seconds: float = 180.0
+    timeout_seconds: float = 120.0
     api_key: str | None = None
     api_key_header: str = "Authorization"
     response_text_field: str = "text"
@@ -38,6 +38,8 @@ class TTSSettings(BaseModel):
     language: str = "hy-AM"
     voice_name: str = "default"
     output_encoding: Literal["wav", "mp3", "pcm_s16le"] = "wav"
+    # When output_encoding is pcm_s16le, raw bytes are interpreted at this rate (Edge/local stack uses 24 kHz).
+    pcm_s16le_sample_rate: int = 24000
     endpoint: str | None = None
     timeout_seconds: float = 60.0
     api_key: str | None = None
@@ -50,12 +52,24 @@ class VoiceBehaviorSettings(BaseModel):
     debug: bool = False
     verbose_trace: bool = False
     max_response_chars: int = 16000
-    # Gemini token streaming over LiveKit data channel + TTS on final scrubbed answer.
-    stream_llm_tokens: bool = True
+    # Must match ``AudioSource`` on the published assistant track (WebRTC / LiveKit expect a fixed rate).
+    livekit_publish_sample_rate: int = 24000
+    # When True, sleep between LiveKit frames (~real-time). False = push audio faster (lower latency).
+    livekit_playout_realtime_pacing: bool = False
+    livekit_playout_frame_ms: float = 10.0
+    # Same as text chat POST /chat top_k (keep in sync with App.jsx when you change retrieval depth).
+    chat_top_k: int = 8
+    # Gemini token streaming over LiveKit data channel + TTS on final scrubbed answer (in-process only).
+    stream_llm_tokens: bool = False
     # When true, voice turns call FastAPI POST /chat (same session_id as the web UI) — shared SessionState.
     route_through_runtime_api: bool = True
     runtime_api_url: str = "http://127.0.0.1:8000"
     runtime_api_timeout_seconds: float = 180.0
+    # After PTT end: wait for remote mic track if browser publishes audio slightly after "start".
+    mic_track_wait_seconds: float = 0.7
+    # After PTT end: keep recording while waiting so trailing WebRTC audio is still buffered.
+    # Should be >= browser unpublish delay (~220ms in App.jsx) minus network jitter; default 0.30s.
+    pcm_trail_pause_seconds: float = 0.30
 
 
 class VoiceConfig(BaseModel):
@@ -128,6 +142,12 @@ def load_voice_config(path: str | Path | None = None) -> VoiceConfig:
         cfg.tts.endpoint = tts_endpoint
     if tts_key:
         cfg.tts.api_key = tts_key
+    tts_pcm_sr = (os.getenv("VOICE_TTS_PCM_SAMPLE_RATE") or "").strip()
+    if tts_pcm_sr:
+        try:
+            cfg.tts.pcm_s16le_sample_rate = int(tts_pcm_sr)
+        except ValueError:
+            pass
     tts_to = (os.getenv("VOICE_TTS_TIMEOUT_SECONDS") or "").strip()
     if tts_to:
         try:
@@ -149,6 +169,35 @@ def load_voice_config(path: str | Path | None = None) -> VoiceConfig:
     if api_to:
         try:
             cfg.behavior.runtime_api_timeout_seconds = float(api_to)
+        except ValueError:
+            pass
+    mic_w = (os.getenv("VOICE_MIC_TRACK_WAIT_SECONDS") or "").strip()
+    if mic_w:
+        try:
+            cfg.behavior.mic_track_wait_seconds = float(mic_w)
+        except ValueError:
+            pass
+    trail = (os.getenv("VOICE_PCM_TRAIL_PAUSE_SECONDS") or "").strip()
+    if trail:
+        try:
+            cfg.behavior.pcm_trail_pause_seconds = float(trail)
+        except ValueError:
+            pass
+    pub_sr = (os.getenv("VOICE_LIVEKIT_PUBLISH_SAMPLE_RATE") or "").strip()
+    if pub_sr:
+        try:
+            cfg.behavior.livekit_publish_sample_rate = int(pub_sr)
+        except ValueError:
+            pass
+    pace = (os.getenv("VOICE_LIVEKIT_PLAYOUT_PACING") or "").strip().lower()
+    if pace in ("0", "false", "no", "off"):
+        cfg.behavior.livekit_playout_realtime_pacing = False
+    elif pace in ("1", "true", "yes", "on"):
+        cfg.behavior.livekit_playout_realtime_pacing = True
+    chat_k = (os.getenv("VOICE_CHAT_TOP_K") or "").strip()
+    if chat_k:
+        try:
+            cfg.behavior.chat_top_k = max(1, min(int(chat_k), 64))
         except ValueError:
             pass
     return cfg

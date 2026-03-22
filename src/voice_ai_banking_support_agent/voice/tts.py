@@ -104,7 +104,7 @@ class HTTPTTSProvider:
             "format": _s(self.output_encoding, "wav"),
         }
         read_to = float(self.timeout_seconds)
-        connect_to = min(20.0, max(5.0, read_to * 0.15))
+        connect_to = min(12.0, max(4.0, read_to * 0.12))
         timeout = (connect_to, read_to)
         delays = (0.5, 1.5, 4.0)
         last_exc: Exception | None = None
@@ -138,7 +138,7 @@ class HTTPTTSProvider:
             except requests.HTTPError as exc:
                 last_exc = exc
                 code = exc.response.status_code if exc.response is not None else None
-                if code in (500, 502, 503, 504, 524) and attempt < len(delays):
+                if code in (408, 429, 500, 502, 503, 504, 524) and attempt < len(delays):
                     time.sleep(delays[attempt])
                     continue
                 break

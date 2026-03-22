@@ -21,6 +21,14 @@ import logging
 _voice_log = logging.getLogger(__name__)
 
 
+def _load_dotenv_for_project(project_root: str) -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(Path(project_root).resolve() / ".env", override=False)
+
+
 def _resolve_voice_config_path(project_root: str, voice_config_path: str | None) -> Path | None:
     if not voice_config_path:
         return None
@@ -136,6 +144,7 @@ def run_livekit_agent(
     voice_config_path: str | None,
     index_name: str,
 ) -> None:
+    _load_dotenv_for_project(project_root)
     app_cfg = load_config(project_root=Path(project_root).resolve(), config_yaml=Path(app_config_path).resolve() if app_config_path else None)
     runtime_settings = load_runtime_settings(runtime_config_path)
     llm_settings = load_llm_settings(llm_config_path)
@@ -155,7 +164,7 @@ def run_livekit_agent(
             timeout_seconds=voice_cfg.behavior.runtime_api_timeout_seconds,
         )
         _voice_log.info(
-            "Voice ↔ same session as web chat: POST %s/chat (session_id from UI). "
+            "Voice <-> same session as web chat: POST %s/chat (session_id from UI). "
             "In-process mode: set VOICE_RUNTIME_HTTP=0 (needs duplicate LLM/embed load).",
             chat_client.base_url,
         )

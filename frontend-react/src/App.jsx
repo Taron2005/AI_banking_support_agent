@@ -310,6 +310,8 @@ export default function App() {
               setVoicePhase(VOICE_ERROR);
               const d = String(j.detail || "unknown_error");
               const errHy = {
+                audio_too_short:
+                  "Ձայնի նմուշը շատ կարճ էր (երկրորդ սեղմումից հետո հաճախակի)։ Սպասեք մի պահ Stop-ից հետո, խոսեք մի քանի վայրկյան, կամ ավելացրեք VOICE_PCM_TRAIL_PAUSE_SECONDS (~0.35) voice agent-ում։",
                 stt_service_missing:
                   "STT չի կապված։ Գործարկեք voice_http_stt_server (պորտ 8088) և VOICE_STT_ENDPOINT .env-ում։",
                 stt_failed: "STT սերվերի սխալ։ Ստուգեք voice agent լոգը։",
@@ -458,6 +460,23 @@ export default function App() {
     if (!room || voicePhase !== VOICE_IDLE) return;
     setVoiceDetail("");
     try {
+      // After unpublishTrack(), reusing the same LocalAudioTrack often leaves mediaStreamTrack
+      // ended or silent — the level meter + WebAudio analyser see no samples on turn 2+.
+      let track = micTrackRef.current;
+      const tr = track?.mediaStreamTrack;
+      if (!track || !tr || tr.readyState === "ended") {
+        track = await createLocalAudioTrack({
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+        micTrackRef.current = track;
+      }
+      // Publish mic before PTT "start" so the agent's LiveKit subscription exists
+      // before buffering (avoids empty second-turn audio when consumer restarts).
+      await room.localParticipant.publishTrack(track);
+      // Give the agent time to subscribe before PTT start (second turn republish race).
+      await new Promise((r) => setTimeout(r, 180));
       const enc = new TextEncoder();
       await room.localParticipant.publishData(
         enc.encode(
@@ -472,23 +491,24 @@ export default function App() {
           topic: "voice.ptt",
         },
       );
-      let track = micTrackRef.current;
-      if (!track) {
-        track = await createLocalAudioTrack({
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        });
-        micTrackRef.current = track;
-      }
-      await room.localParticipant.publishTrack(track);
+      const msTrack = track.mediaStreamTrack;
       const prevStream =
-        track.mediaStream ||
-        (track.mediaStreamTrack ? new MediaStream([track.mediaStreamTrack]) : null);
+        msTrack && msTrack.readyState !== "ended"
+          ? track.mediaStream || new MediaStream([msTrack])
+          : null;
       setMicPreviewStream(prevStream);
       setVoicePhase(VOICE_LISTENING);
       setVoiceProcessingDetail("");
     } catch (e) {
+      const t = micTrackRef.current;
+      if (t) {
+        try {
+          t.stop();
+        } catch {
+          /* ignore */
+        }
+        micTrackRef.current = null;
+      }
       setMicPreviewStream(null);
       setVoicePhase(VOICE_ERROR);
       setVoiceDetail(String(e.message || e));
@@ -516,7 +536,18 @@ export default function App() {
       );
       await new Promise((r) => setTimeout(r, 220));
       const track = micTrackRef.current;
-      if (track) await room.localParticipant.unpublishTrack(track);
+      if (track) {
+        try {
+          await room.localParticipant.unpublishTrack(track);
+        } finally {
+          try {
+            track.stop();
+          } catch {
+            /* ignore */
+          }
+          micTrackRef.current = null;
+        }
+      }
       setMicPreviewStream(null);
     } catch (e) {
       setMicPreviewStream(null);
@@ -532,6 +563,11 @@ export default function App() {
       if (track && room.localParticipant) {
         try {
           await room.localParticipant.unpublishTrack(track);
+        } catch {
+          /* ignore */
+        }
+        try {
+          track.stop();
         } catch {
           /* ignore */
         }
@@ -666,11 +702,7 @@ export default function App() {
 
       {lkConnected ? (
         <div className="voice-hud-wrap">
-          <VoiceLiveHud
-            active={voicePhase === VOICE_LISTENING}
-            mediaStream={micPreviewStream}
-            speechLang="hy-AM"
-          />
+          <VoiceLiveHud active={voicePhase === VOICE_LISTENING} mediaStream={micPreviewStream} />
         </div>
       ) : null}
 
@@ -681,9 +713,9 @@ export default function App() {
             <ol>
               <li>Հարցրեք վարկերի, ավանդների կամ մասնաճյուղերի մասին տեքստով (ստորև)։</li>
               <li>
-                Կամ միացրեք ձայնը՝ <strong>Connect voice</strong>, ապա <strong>Mic</strong> — խոսելիս տեսնեք{" "}
-                <strong>կենդանի տեքստ և մակարդակի ցուցիչ</strong> (նախադիտում). Սեղմեք <strong>Stop &amp; send</strong> —
-                սերվերը STT-ով կուղարկի հարցը, պատասխանը կգա TTS-ով։
+                Կամ միացրեք ձայնը՝ <strong>Connect voice</strong>, ապա <strong>Mic</strong> — մակարդակի ցուցիչը ցույց է տալիս
+                միկրոֆոնը։ <strong>Stop &amp; send</strong>-ից հետո ճանաչված տեքստը կերևա chat-ում <strong>STT</strong> պիտակով
+                (Whisper), պատասխանը՝ TTS-ով։
               </li>
               <li>Պատասխանները հիմնված են միայն բանկերի պաշտոնական տվյալների վրա (hy_model_index + Gemini)։</li>
             </ol>

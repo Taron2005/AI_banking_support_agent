@@ -1,3 +1,10 @@
+"""
+Self-hosted LiveKit agent: push-to-talk data messages, mic PCM capture, STT → RAG → TTS.
+
+Split modules: ``voice_topics`` (data-channel names), ``livekit_mic`` (remote track + consumer
+lifecycle), ``livekit_playout`` (TTS decode, resample, frame pacing into ``AudioSource``).
+"""
+
 from __future__ import annotations
 
 import array
@@ -18,19 +25,28 @@ from .session_handler import (
     sanitize_runtime_session_id_override,
 )
 from .hy_stt_postprocess import normalize_stt_transcript_hy
+from .livekit_mic import (
+    cancel_audio_consumer_task,
+    find_remote_audio_track,
+    wait_for_remote_audio_track,
+)
 from .stt import STTProvider, is_mock_stt_placeholder
 from .tts import TTSProvider
 from .tts_chunking import split_for_sequential_tts
+from .tts_speech_prepare import prepare_text_for_tts
+from .livekit_playout import publish_pcm_s16le_to_audio_source, tts_bytes_to_mono_s16le_at_rate
 from .voice_config import VoiceConfig
 from .voice_models import STTInput, VoiceTurnResult
+from .voice_topics import (
+    TOPIC_ASSISTANT_TEXT,
+    TOPIC_ASSISTANT_TEXT_DELTA,
+    TOPIC_PTT,
+    TOPIC_VOICE_STATE,
+    TOPIC_VOICE_TRANSCRIPT_FINAL,
+)
+from .voice_turn_log import VoiceTurnLog
 
 logger = logging.getLogger(__name__)
-
-TOPIC_PTT = "voice.ptt"
-TOPIC_ASSISTANT_TEXT = "assistant.text"
-TOPIC_ASSISTANT_TEXT_DELTA = "assistant.text.delta"
-TOPIC_VOICE_STATE = "voice.state"
-TOPIC_VOICE_TRANSCRIPT_FINAL = "voice.transcript.final"
 
 
 def _safe_next_chunk(gen):
@@ -82,6 +98,9 @@ class LiveKitVoiceAgent:
         self._audio_consumer_tasks: dict[str, asyncio.Task[None]] = {}
         self._ptt_finalize_tasks: dict[str, asyncio.Task[None]] = {}
         self._ptt_session_id_hint: dict[str, str] = {}
+        # Latest RemoteAudioTrack per user (updated on subscribe); consumer restarted each PTT start.
+        self._remote_mic_track_ref: dict[str, object] = {}
+        self._ptt_turn_log: dict[str, VoiceTurnLog] = {}
 
     def process_turn(
         self,
@@ -127,12 +146,13 @@ class LiveKitVoiceAgent:
                 session_id=session_id,
                 query=user_text,
                 index_name=index_name,
+                top_k=self._voice_config.behavior.chat_top_k,
                 verbose=self._voice_config.behavior.verbose_trace,
             ),
             state,
         )
         answer_text = runtime_response.answer_text[: self._voice_config.behavior.max_response_chars]
-        tts_output = self._tts.synthesize(answer_text)
+        tts_output = self._tts.synthesize(prepare_text_for_tts(answer_text))
         return VoiceTurnResult(
             session_id=session_id,
             user_text=user_text,
@@ -178,7 +198,8 @@ class LiveKitVoiceAgent:
                 "Could not connect to LiveKit. Verify LIVEKIT_URL, LIVEKIT_TOKEN, and that the server is running."
             ) from exc
 
-        out_source = rtc.AudioSource(sample_rate=24000, num_channels=1)
+        pub_sr = max(8000, int(self._voice_config.behavior.livekit_publish_sample_rate))
+        out_source = rtc.AudioSource(sample_rate=pub_sr, num_channels=1)
         out_track = rtc.LocalAudioTrack.create_audio_track("assistant-tts", out_source)
         await room.local_participant.publish_track(out_track)
         logger.info("Published assistant audio track.")
@@ -192,22 +213,19 @@ class LiveKitVoiceAgent:
             if participant.identity == agent_id:
                 return
             pid = participant.identity
-            prev = self._audio_consumer_tasks.pop(pid, None)
-            if prev and not prev.done():
-                prev.cancel()
-            self._audio_consumer_tasks[pid] = asyncio.create_task(
-                self._consume_remote_audio_track(
-                    rtc=rtc,
-                    track=track,
-                    participant_identity=pid,
-                )
+            self._remote_mic_track_ref[pid] = track
+            logger.info(
+                "Remote mic track cached participant=%s (consumer starts on next PTT start).",
+                pid,
             )
 
         @room.on("track_unsubscribed")
         def _on_track_unsubscribed(track, publication, participant):  # pragma: no cover
             if participant.identity == agent_id:
                 return
-            task = self._audio_consumer_tasks.pop(participant.identity, None)
+            pid = participant.identity
+            self._remote_mic_track_ref.pop(pid, None)
+            task = self._audio_consumer_tasks.pop(pid, None)
             if task and not task.done():
                 task.cancel()
 
@@ -246,6 +264,54 @@ class LiveKitVoiceAgent:
             raise
         except Exception:
             logger.exception("Audio consumer failed participant=%s", participant_identity)
+        else:
+            logger.warning(
+                "Mic AudioStream ended participant=%s (unpublish or SDK close). "
+                "Consumer will be recreated on the next PTT start.",
+                participant_identity,
+            )
+
+    async def _ensure_mic_consumer(
+        self,
+        *,
+        rtc,
+        room,
+        participant_identity: str,
+        vlog: VoiceTurnLog,
+    ) -> None:
+        """Start a fresh audio consumer; required every turn after the previous stream ended."""
+        vlog.event("mic_consumer_ensure_start")
+        track = self._remote_mic_track_ref.get(participant_identity)
+        if track is None:
+            track = find_remote_audio_track(room, participant_identity=participant_identity)
+        if track is None:
+            track = await wait_for_remote_audio_track(
+                room,
+                participant_identity=participant_identity,
+                max_wait_s=self._voice_config.behavior.mic_track_wait_seconds,
+            )
+        if track is None:
+            vlog.event(
+                "mic_consumer_no_track",
+                wait_s=self._voice_config.behavior.mic_track_wait_seconds,
+            )
+            logger.warning(
+                "No remote mic track for participant=%s after %.2fs — audio buffer may be empty.",
+                participant_identity,
+                self._voice_config.behavior.mic_track_wait_seconds,
+            )
+            return
+        self._remote_mic_track_ref[participant_identity] = track
+        prev = self._audio_consumer_tasks.pop(participant_identity, None)
+        await cancel_audio_consumer_task(prev)
+        self._audio_consumer_tasks[participant_identity] = asyncio.create_task(
+            self._consume_remote_audio_track(
+                rtc=rtc,
+                track=track,
+                participant_identity=participant_identity,
+            )
+        )
+        vlog.event("mic_consumer_task_spawned")
 
     async def _handle_data_received(
         self,
@@ -268,9 +334,9 @@ class LiveKitVoiceAgent:
                 rtc=rtc,
                 room=room,
                 out_source=out_source,
-                packet=packet,
                 body=body,
                 index_name=index_name,
+                packet=packet,
             )
             return
 
@@ -324,7 +390,13 @@ class LiveKitVoiceAgent:
                 cleaned = sanitize_runtime_session_id_override(sid_raw)
             if cleaned:
                 self._ptt_session_id_hint[pid] = cleaned
-            logger.info("PTT start participant=%s", pid)
+            tlog = VoiceTurnLog()
+            self._ptt_turn_log[pid] = tlog
+            tlog.event("ptt_record_start", participant=pid)
+            await self._ensure_mic_consumer(
+                rtc=rtc, room=room, participant_identity=pid, vlog=tlog
+            )
+            logger.info("PTT start participant=%s turn_id=%s", pid, tlog.turn_id)
             await self._publish_voice_state(room, state="listening")
             return
 
@@ -391,29 +463,47 @@ class LiveKitVoiceAgent:
         out_source,
         answer_text: str,
         participant_identity: str,
+        vlog: VoiceTurnLog | None = None,
     ) -> bool:
-        """Returns False if TTS/playout failed (caller should set voice error state)."""
+        """Returns False if TTS/playout failed (caller publishes error; idle comes from turn finally)."""
         tchunks = split_for_sequential_tts(answer_text)
         if not tchunks:
             tchunks = [answer_text]
         chunk_i = -1
+        tts_timeout = max(24.0, float(self._voice_config.tts.timeout_seconds))
         try:
             for chunk_i, chunk in enumerate(tchunks):
                 piece = (chunk or "").strip()
                 if not piece:
                     continue
-                tts_output = await asyncio.to_thread(self._tts.synthesize, piece)
+                if vlog and chunk_i == 0:
+                    vlog.event("tts_chunk_start", index=chunk_i, chars=len(piece))
+                tts_output = await asyncio.wait_for(
+                    asyncio.to_thread(self._tts.synthesize, piece),
+                    timeout=tts_timeout,
+                )
                 await self._publish_tts_audio(
                     rtc=rtc,
                     out_source=out_source,
                     tts_audio=tts_output.audio,
                     tts_encoding=tts_output.encoding,
                 )
+        except asyncio.TimeoutError:
+            logger.exception(
+                "TTS timeout participant=%s chunk_index=%s", participant_identity, chunk_i
+            )
+            if vlog:
+                vlog.event("tts_timeout", chunk_index=chunk_i)
+            await self._publish_voice_state(room, state="error", detail="tts_failed")
+            return False
         except Exception:
             logger.exception("TTS failed participant=%s chunk_index=%s", participant_identity, chunk_i)
+            if vlog:
+                vlog.fail("tts", RuntimeError("tts_failed"))
             await self._publish_voice_state(room, state="error", detail="tts_failed")
-            await self._publish_voice_state(room, state="idle")
             return False
+        if vlog:
+            vlog.event("tts_playback_done", chunks=len(tchunks))
         return True
 
     async def _deliver_assistant_payload_and_tts(
@@ -426,6 +516,7 @@ class LiveKitVoiceAgent:
         rr: RuntimeResponse,
         participant_identity: str,
         streamed: bool,
+        vlog: VoiceTurnLog | None = None,
     ) -> None:
         max_c = self._voice_config.behavior.max_response_chars
         answer_text = (rr.answer_text or "")[:max_c]
@@ -445,12 +536,14 @@ class LiveKitVoiceAgent:
         ).encode("utf-8")
         await room.local_participant.publish_data(packet, reliable=True, topic=TOPIC_ASSISTANT_TEXT)
         await self._publish_voice_state(room, state="speaking")
+        speak_text = prepare_text_for_tts(answer_text)
         await self._play_tts_answer(
             rtc=rtc,
             room=room,
             out_source=out_source,
-            answer_text=answer_text,
+            answer_text=speak_text,
             participant_identity=participant_identity,
+            vlog=vlog,
         )
 
     async def _consume_runtime_stream(
@@ -463,6 +556,7 @@ class LiveKitVoiceAgent:
         req: RuntimeRequest,
         state,
         participant_identity: str,
+        vlog: VoiceTurnLog | None = None,
     ):
         """
         Run ``stream_handle`` (Gemini token streaming), push deltas to the UI, then play TTS
@@ -473,18 +567,30 @@ class LiveKitVoiceAgent:
             raise RuntimeError("stream_handle requires in-process runtime (set VOICE_RUNTIME_HTTP=0).")
         gen = self._runtime.stream_handle(req, state)
         final = None
-        while True:
-            chunk = await asyncio.to_thread(_safe_next_chunk, gen)
-            if chunk is None:
-                break
-            if chunk.text_delta:
-                dp = json.dumps({"text": chunk.text_delta}, ensure_ascii=False).encode("utf-8")
-                await room.local_participant.publish_data(
-                    dp, reliable=True, topic=TOPIC_ASSISTANT_TEXT_DELTA
+        stream_chunk_timeout = max(90.0, float(self._voice_config.behavior.runtime_api_timeout_seconds))
+        try:
+            while True:
+                chunk = await asyncio.wait_for(
+                    asyncio.to_thread(_safe_next_chunk, gen),
+                    timeout=stream_chunk_timeout,
                 )
-            if chunk.done is not None:
-                final = chunk.done
-                break
+                if chunk is None:
+                    break
+                if chunk.text_delta:
+                    dp = json.dumps({"text": chunk.text_delta}, ensure_ascii=False).encode("utf-8")
+                    await room.local_participant.publish_data(
+                        dp, reliable=True, topic=TOPIC_ASSISTANT_TEXT_DELTA
+                    )
+                if chunk.done is not None:
+                    final = chunk.done
+                    break
+        finally:
+            close = getattr(gen, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    logger.debug("stream_handle generator close", exc_info=True)
         if final is None:
             raise RuntimeError("stream_handle ended without a terminal response")
 
@@ -506,12 +612,14 @@ class LiveKitVoiceAgent:
         await room.local_participant.publish_data(packet, reliable=True, topic=TOPIC_ASSISTANT_TEXT)
 
         await self._publish_voice_state(room, state="speaking")
+        speak_text = prepare_text_for_tts(answer_text)
         if not await self._play_tts_answer(
             rtc=rtc,
             room=room,
             out_source=out_source,
-            answer_text=answer_text,
+            answer_text=speak_text,
             participant_identity=participant_identity,
+            vlog=vlog,
         ):
             return final
 
@@ -527,95 +635,149 @@ class LiveKitVoiceAgent:
         index_name: str,
         runtime_session_id_override: str | None = None,
     ) -> None:
+        """
+        One PTT turn: drain mic buffer → STT → RAG/LLM → TTS.
+
+        **Root cause (second-turn hang / no audio):** the mic ``AudioStream`` consumer runs once per
+        track subscription; after unpublish/republish or SDK stream end the task exits. A fresh
+        consumer is started on each ``PTT start`` via ``_ensure_mic_consumer``. This method always
+        ends in ``voice.state=idle`` in ``finally`` so the next turn cannot stay stuck in processing.
+        """
+        vlog = self._ptt_turn_log.pop(participant_identity, None) or VoiceTurnLog()
+        stt_timeout = max(20.0, float(self._voice_config.stt.timeout_seconds))
+        rt_timeout = max(30.0, float(self._voice_config.behavior.runtime_api_timeout_seconds))
+        stream_turn_timeout = rt_timeout + 120.0
+
         async with self._turn_lock:
-            self._ptt_recording[participant_identity] = False
-            await asyncio.sleep(0.25)
-            chunks = self._ptt_buffers.pop(participant_identity, [])
-            pcm_blob = b"".join(chunks)
-            await self._publish_voice_state(room, state="processing")
+            vlog.event("finalize_enter", participant=participant_identity)
+            try:
+                # Keep _ptt_recording True during the trail pause so the mic consumer still appends
+                # frames while the browser finishes sending audio (client waits ~220ms after PTT end
+                # before unpublish). Stopping recording *before* this pause drops the tail and often
+                # yields empty buffers on the second push-to-talk.
+                vlog.event("record_stop")
+                await asyncio.sleep(float(self._voice_config.behavior.pcm_trail_pause_seconds))
+                self._ptt_recording[participant_identity] = False
+                chunks = self._ptt_buffers.pop(participant_identity, [])
+                pcm_blob = b"".join(chunks)
+                await self._publish_voice_state(room, state="processing")
 
-            min_bytes = 3200  # ~100ms mono int16@16k
-            if len(pcm_blob) < min_bytes:
+                min_bytes = 3200  # ~100ms mono int16@16k
+                if len(pcm_blob) < min_bytes:
+                    logger.warning(
+                        "PTT end: audio too short participant=%s bytes=%s (min=%s). "
+                        "Often fixed by VOICE_PCM_TRAIL_PAUSE_SECONDS >= 0.28 or speaking longer; "
+                        "see README voice troubleshooting.",
+                        participant_identity,
+                        len(pcm_blob),
+                        min_bytes,
+                    )
+                    vlog.event("audio_too_short", bytes=len(pcm_blob), min_bytes=min_bytes)
+                    await self._publish_voice_state(room, state="error", detail="audio_too_short")
+                    return
+
+                pcm_blob = self._boost_quiet_pcm_s16le(pcm_blob)
+                wav_bytes = self._pcm_to_wav(pcm_blob, sample_rate=16000, channels=1)
+                participant = LiveKitParticipantContext(
+                    room_name=self._voice_config.livekit.room_name,
+                    participant_identity=participant_identity,
+                )
+                await self._publish_voice_state(room, state="processing", detail="transcribing")
+                vlog.event("stt_start")
+                try:
+                    user_text = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self._stt.transcribe,
+                            STTInput(
+                                content=wav_bytes,
+                                encoding="wav",
+                                language=self._voice_config.stt.language,
+                            ),
+                        ),
+                        timeout=stt_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("STT timeout participant=%s", participant_identity)
+                    vlog.event("stt_timeout")
+                    await self._publish_voice_state(room, state="error", detail="stt_failed")
+                    return
+                except Exception as exc:
+                    logger.exception("STT failed participant=%s", participant_identity)
+                    vlog.fail("stt", exc)
+                    await self._publish_voice_state(room, state="error", detail="stt_failed")
+                    return
+
+                vlog.event("stt_end")
+
+                if is_mock_stt_placeholder(user_text):
+                    logger.error(
+                        "STT mock placeholder — configure VOICE_STT_ENDPOINT (e.g. :8088/transcribe)."
+                    )
+                    vlog.event("stt_mock_placeholder")
+                    await self._publish_voice_state(room, state="error", detail="stt_service_missing")
+                    return
+
+                user_text = normalize_stt_transcript_hy((user_text or "").strip())
+                if not user_text:
+                    logger.warning("STT empty transcript participant=%s", participant_identity)
+                    vlog.event("stt_empty_result")
+                    await self._publish_voice_state(room, state="error", detail="stt_empty")
+                    return
+
                 logger.info(
-                    "PTT end: audio too short participant=%s bytes=%s (duplicate end or empty buffer)",
+                    "PTT STT ok turn_id=%s participant=%s preview=%r",
+                    vlog.turn_id,
                     participant_identity,
-                    len(pcm_blob),
+                    user_text[:240] + ("…" if len(user_text) > 240 else ""),
                 )
-                await self._publish_voice_state(room, state="idle")
-                return
 
-            pcm_blob = self._boost_quiet_pcm_s16le(pcm_blob)
-            wav_bytes = self._pcm_to_wav(pcm_blob, sample_rate=16000, channels=1)
-            participant = LiveKitParticipantContext(
-                room_name=self._voice_config.livekit.room_name,
-                participant_identity=participant_identity,
-            )
-            await self._publish_voice_state(room, state="processing", detail="transcribing")
-            try:
-                user_text = await asyncio.to_thread(
-                    self._stt.transcribe,
-                    STTInput(
-                        content=wav_bytes,
-                        encoding="wav",
-                        language=self._voice_config.stt.language,
-                    ),
+                tr_packet = json.dumps(
+                    {
+                        "text": user_text,
+                        "final": True,
+                        "participant_identity": participant_identity,
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                await room.local_participant.publish_data(
+                    tr_packet, reliable=True, topic=TOPIC_VOICE_TRANSCRIPT_FINAL
                 )
-            except Exception:
-                logger.exception("STT failed participant=%s", participant_identity)
-                await self._publish_voice_state(room, state="error", detail="stt_failed")
-                await self._publish_voice_state(room, state="idle")
-                return
 
-            if is_mock_stt_placeholder(user_text):
-                logger.error(
-                    "STT returned mock placeholder — start scripts/voice_http_stt_server.py and set "
-                    "VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe in .env (or fix HTTP STT errors)."
+                await self._publish_voice_state(room, state="processing", detail="answering")
+                session_id = resolve_runtime_session_id(
+                    room_name=participant.room_name,
+                    participant_identity=participant.participant_identity,
+                    override=runtime_session_id_override,
                 )
-                await self._publish_voice_state(room, state="error", detail="stt_service_missing")
-                await self._publish_voice_state(room, state="idle")
-                return
-
-            user_text = normalize_stt_transcript_hy((user_text or "").strip())
-            if not user_text:
-                logger.warning("STT returned empty transcript participant=%s", participant_identity)
-                await self._publish_voice_state(room, state="error", detail="stt_empty")
-                await self._publish_voice_state(room, state="idle")
-                return
-
-            logger.info(
-                "PTT STT ok participant=%s chars=%s preview=%r",
-                participant_identity,
-                len(user_text),
-                user_text[:240] + ("…" if len(user_text) > 240 else ""),
-            )
-
-            tr_packet = json.dumps(
-                {
-                    "text": user_text,
-                    "final": True,
-                    "participant_identity": participant_identity,
-                },
-                ensure_ascii=False,
-            ).encode("utf-8")
-            await room.local_participant.publish_data(
-                tr_packet, reliable=True, topic=TOPIC_VOICE_TRANSCRIPT_FINAL
-            )
-
-            await self._publish_voice_state(room, state="processing", detail="answering")
-            session_id = resolve_runtime_session_id(
-                room_name=participant.room_name,
-                participant_identity=participant.participant_identity,
-                override=runtime_session_id_override,
-            )
-            req = RuntimeRequest(
-                session_id=session_id,
-                query=user_text,
-                index_name=index_name,
-                verbose=self._voice_config.behavior.verbose_trace,
-            )
-            try:
+                req = RuntimeRequest(
+                    session_id=session_id,
+                    query=user_text,
+                    index_name=index_name,
+                    top_k=self._voice_config.behavior.chat_top_k,
+                    verbose=self._voice_config.behavior.verbose_trace,
+                )
+                vlog.event("llm_start", session_id=session_id)
                 if self._chat_client is not None:
-                    rr = await asyncio.to_thread(self._chat_client.chat, req)
+                    try:
+                        rr = await asyncio.wait_for(
+                            asyncio.to_thread(self._chat_client.chat, req),
+                            timeout=rt_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error("Runtime /chat timeout participant=%s", participant_identity)
+                        vlog.event("llm_timeout")
+                        await self._publish_voice_state(
+                            room, state="error", detail="processing_failed"
+                        )
+                        return
+                    except Exception as exc:
+                        logger.exception("Runtime /chat failed participant=%s", participant_identity)
+                        vlog.fail("llm", exc)
+                        await self._publish_voice_state(
+                            room, state="error", detail="processing_failed"
+                        )
+                        return
+                    vlog.event("llm_end")
                     await self._deliver_assistant_payload_and_tts(
                         rtc=rtc,
                         room=room,
@@ -624,23 +786,61 @@ class LiveKitVoiceAgent:
                         rr=rr,
                         participant_identity=participant_identity,
                         streamed=False,
+                        vlog=vlog,
                     )
                 elif self._voice_config.behavior.stream_llm_tokens:
                     assert self._runtime is not None and self._state_store is not None
                     state = self._state_store.get_or_create(session_id)
-                    await self._consume_runtime_stream(
-                        rtc=rtc,
-                        room=room,
-                        out_source=out_source,
-                        session_id=session_id,
-                        req=req,
-                        state=state,
-                        participant_identity=participant_identity,
-                    )
+                    try:
+                        await asyncio.wait_for(
+                            self._consume_runtime_stream(
+                                rtc=rtc,
+                                room=room,
+                                out_source=out_source,
+                                session_id=session_id,
+                                req=req,
+                                state=state,
+                                participant_identity=participant_identity,
+                                vlog=vlog,
+                            ),
+                            timeout=stream_turn_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error("Stream LLM/TTS timeout participant=%s", participant_identity)
+                        vlog.event("stream_turn_timeout")
+                        await self._publish_voice_state(
+                            room, state="error", detail="processing_failed"
+                        )
+                        return
+                    except Exception as exc:
+                        logger.exception("Stream path failed participant=%s", participant_identity)
+                        vlog.fail("stream", exc)
+                        await self._publish_voice_state(
+                            room, state="error", detail="processing_failed"
+                        )
+                        return
                 else:
                     assert self._runtime is not None and self._state_store is not None
                     state = self._state_store.get_or_create(session_id)
-                    runtime_response = await asyncio.to_thread(self._runtime.handle, req, state)
+                    try:
+                        runtime_response = await asyncio.wait_for(
+                            asyncio.to_thread(self._runtime.handle, req, state),
+                            timeout=rt_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error("Runtime handle timeout participant=%s", participant_identity)
+                        vlog.event("llm_timeout")
+                        await self._publish_voice_state(
+                            room, state="error", detail="processing_failed"
+                        )
+                        return
+                    except Exception as exc:
+                        logger.exception("Runtime handle failed participant=%s", participant_identity)
+                        vlog.fail("llm", exc)
+                        await self._publish_voice_state(
+                            room, state="error", detail="processing_failed"
+                        )
+                        return
                     await self._deliver_assistant_payload_and_tts(
                         rtc=rtc,
                         room=room,
@@ -649,16 +849,25 @@ class LiveKitVoiceAgent:
                         rr=runtime_response,
                         participant_identity=participant_identity,
                         streamed=False,
+                        vlog=vlog,
                     )
-            except Exception:
-                logger.exception("Runtime answer failed participant=%s", participant_identity)
+                vlog.event("turn_success")
+            except asyncio.CancelledError:
+                vlog.event("finalize_cancelled")
+                raise
+            except Exception as exc:
+                logger.exception("Voice turn failed participant=%s", participant_identity)
+                vlog.fail("turn", exc)
                 await self._publish_voice_state(room, state="error", detail="processing_failed")
+            finally:
+                self._ptt_recording[participant_identity] = False
+                vlog.event("cleanup_to_idle")
                 await self._publish_voice_state(room, state="idle")
-                return
-
-            await asyncio.sleep(0.12)
-            await self._publish_voice_state(room, state="idle")
-            logger.info("PTT turn complete participant=%s", participant_identity)
+                logger.info(
+                    "PTT finalize done turn_id=%s participant=%s",
+                    vlog.turn_id,
+                    participant_identity,
+                )
 
     async def _handle_legacy_text_packet(
         self, *, rtc, room, out_source, body: dict, index_name: str
@@ -666,88 +875,91 @@ class LiveKitVoiceAgent:
         async with self._turn_lock:
             await self._publish_voice_state(room, state="processing")
             participant_id = str(body.get("participant_identity") or "unknown")
-            text = normalize_stt_transcript_hy(str(body.get("text", "") or "").strip())
-            participant = LiveKitParticipantContext(
-                room_name=self._voice_config.livekit.room_name,
-                participant_identity=participant_id,
-            )
-            tr_packet = json.dumps(
-                {"text": text, "final": True, "participant_identity": participant_id},
-                ensure_ascii=False,
-            ).encode("utf-8")
-            await room.local_participant.publish_data(
-                tr_packet, reliable=True, topic=TOPIC_VOICE_TRANSCRIPT_FINAL
-            )
-            raw_sid = body.get("session_id") or body.get("runtime_session_id")
-            sid_ov = (
-                sanitize_runtime_session_id_override(raw_sid)
-                if isinstance(raw_sid, str)
-                else None
-            )
-            session_id = resolve_runtime_session_id(
-                room_name=participant.room_name,
-                participant_identity=participant.participant_identity,
-                override=sid_ov,
-            )
-            lreq = RuntimeRequest(
-                session_id=session_id,
-                query=text,
-                index_name=index_name,
-                verbose=self._voice_config.behavior.verbose_trace,
-            )
             try:
-                if self._chat_client is not None:
-                    runtime_response = await asyncio.to_thread(self._chat_client.chat, lreq)
-                else:
-                    assert self._runtime is not None and self._state_store is not None
-                    state = self._state_store.get_or_create(session_id)
-                    runtime_response = await asyncio.to_thread(self._runtime.handle, lreq, state)
-            except Exception:
-                logger.exception("Legacy data packet processing failed")
-                await self._publish_voice_state(room, state="error", detail="processing_failed")
-                await self._publish_voice_state(room, state="idle")
-                return
+                text = normalize_stt_transcript_hy(str(body.get("text", "") or "").strip())
+                participant = LiveKitParticipantContext(
+                    room_name=self._voice_config.livekit.room_name,
+                    participant_identity=participant_id,
+                )
+                tr_packet = json.dumps(
+                    {"text": text, "final": True, "participant_identity": participant_id},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                await room.local_participant.publish_data(
+                    tr_packet, reliable=True, topic=TOPIC_VOICE_TRANSCRIPT_FINAL
+                )
+                raw_sid = body.get("session_id") or body.get("runtime_session_id")
+                sid_ov = (
+                    sanitize_runtime_session_id_override(raw_sid)
+                    if isinstance(raw_sid, str)
+                    else None
+                )
+                session_id = resolve_runtime_session_id(
+                    room_name=participant.room_name,
+                    participant_identity=participant.participant_identity,
+                    override=sid_ov,
+                )
+                lreq = RuntimeRequest(
+                    session_id=session_id,
+                    query=text,
+                    index_name=index_name,
+                    top_k=self._voice_config.behavior.chat_top_k,
+                    verbose=self._voice_config.behavior.verbose_trace,
+                )
+                try:
+                    if self._chat_client is not None:
+                        runtime_response = await asyncio.wait_for(
+                            asyncio.to_thread(self._chat_client.chat, lreq),
+                            timeout=max(
+                                30.0,
+                                float(self._voice_config.behavior.runtime_api_timeout_seconds),
+                            ),
+                        )
+                    else:
+                        assert self._runtime is not None and self._state_store is not None
+                        state = self._state_store.get_or_create(session_id)
+                        runtime_response = await asyncio.wait_for(
+                            asyncio.to_thread(self._runtime.handle, lreq, state),
+                            timeout=max(
+                                30.0,
+                                float(self._voice_config.behavior.runtime_api_timeout_seconds),
+                            ),
+                        )
+                except Exception:
+                    logger.exception("Legacy data packet processing failed")
+                    await self._publish_voice_state(room, state="error", detail="processing_failed")
+                    return
 
-            await self._deliver_assistant_payload_and_tts(
-                rtc=rtc,
-                room=room,
-                out_source=out_source,
-                session_id=session_id,
-                rr=runtime_response,
-                participant_identity=participant_id,
-                streamed=False,
-            )
-            await asyncio.sleep(0.12)
-            await self._publish_voice_state(room, state="idle")
+                await self._deliver_assistant_payload_and_tts(
+                    rtc=rtc,
+                    room=room,
+                    out_source=out_source,
+                    session_id=session_id,
+                    rr=runtime_response,
+                    participant_identity=participant_id,
+                    streamed=False,
+                )
+            finally:
+                await self._publish_voice_state(room, state="idle")
 
     async def _publish_tts_audio(self, *, rtc, out_source, tts_audio: bytes, tts_encoding: str) -> None:
         try:
-            if tts_encoding == "wav":
-                with wave.open(io.BytesIO(tts_audio), "rb") as wf:
-                    sample_rate = wf.getframerate()
-                    channels = wf.getnchannels()
-                    pcm = wf.readframes(wf.getnframes())
-            elif tts_encoding == "pcm_s16le":
-                sample_rate = 24000
-                channels = 1
-                pcm = tts_audio
-            else:
-                logger.warning("Unsupported TTS encoding for live publish: %s", tts_encoding)
-                return
-            bytes_per_frame = channels * 2
-            samples_per_channel = max(1, len(pcm) // bytes_per_frame // 10)
-            frame_bytes = samples_per_channel * bytes_per_frame
-            pos = 0
-            while pos + frame_bytes <= len(pcm):
-                chunk = pcm[pos : pos + frame_bytes]
-                pos += frame_bytes
-                frame = rtc.AudioFrame(
-                    data=chunk,
-                    sample_rate=sample_rate,
-                    num_channels=channels,
-                    samples_per_channel=samples_per_channel,
-                )
-                await out_source.capture_frame(frame)
+            target_sr = max(8000, int(self._voice_config.behavior.livekit_publish_sample_rate))
+            pcm_mono = tts_bytes_to_mono_s16le_at_rate(
+                tts_audio,
+                encoding=tts_encoding,
+                target_sample_rate=target_sr,
+                pcm_assumed_rate_if_raw=int(self._voice_config.tts.pcm_s16le_sample_rate),
+            )
+            await publish_pcm_s16le_to_audio_source(
+                rtc,
+                out_source,
+                pcm_mono,
+                sample_rate=target_sr,
+                num_channels=1,
+                frame_ms=float(self._voice_config.behavior.livekit_playout_frame_ms),
+                pace_realtime=bool(self._voice_config.behavior.livekit_playout_realtime_pacing),
+            )
         except Exception:
             logger.exception("Failed to publish TTS audio track")
 

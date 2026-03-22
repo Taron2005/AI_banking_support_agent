@@ -24,8 +24,7 @@ if "%LIVEKIT_TOKEN%"=="" (
 set "VC=voice_config.yaml"
 if not exist "%VC%" set "VC=voice_config.example.yaml"
 
-call .venv\Scripts\activate.bat
-python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml voice-agent ^
+".venv\Scripts\python.exe" -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml voice-agent ^
   --index-name hy_model_index ^
   --runtime-config runtime_config.yaml ^
   --llm-config llm_config.yaml ^

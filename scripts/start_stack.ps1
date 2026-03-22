@@ -1,7 +1,11 @@
 #Requires -Version 5.1
 param(
   # Run scripts\stop_stack.ps1 first (docker compose down + kill :8000 and :5173 listeners)
-  [switch]$ClearPorts
+  [switch]$ClearPorts,
+  # Do not wait for http://127.0.0.1:8088/health and :8089/health (faster script exit; you verify manually)
+  [switch]$SkipVoiceServersHealthCheck,
+  # API + Docker LiveKit + Vite only — no STT, TTS, or LiveKit voice agent (run those in separate terminals later)
+  [switch]$TextChatOnly
 )
 <#
   Full-stack shortcut (Windows). Canonical manual pipeline: README §7b / §7c.
@@ -9,6 +13,8 @@ param(
   Run from repo root:  powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1
   Fresh start:         powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1 -ClearPorts
   Or double-click: START_STACK.bat
+  Skip STT/TTS wait:    powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1 -SkipVoiceServersHealthCheck
+  Text chat only:      powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1 -TextChatOnly
 #>
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -70,18 +76,67 @@ function Test-TcpPortOpen {
   }
 }
 
-# PowerShell 5.1: avoid nested `"` inside double-quoted Start-Process args (breaks on `&&`).
+# Use -WorkingDirectory so child processes resolve relative paths (venv, scripts) without embedding the repo path in cmd.exe.
 function Start-CmdKeepOpen {
   param(
     [Parameter(Mandatory = $true)][string]$WorkDir,
     [Parameter(Mandatory = $true)][string]$CommandTail
   )
-  $q = $WorkDir.Replace('"', '""')
-  $line = ('cd /d "{0}" && {1}' -f $q, $CommandTail)
-  Start-Process -FilePath "cmd.exe" -ArgumentList @("/k", $line) -WindowStyle Normal
+  Start-Process -FilePath "cmd.exe" -ArgumentList @("/k", $CommandTail) -WindowStyle Normal -WorkingDirectory $WorkDir
 }
 
-Write-Step "Voice AI Banking - local stack"
+# STT/TTS: call venv python directly (no activate.bat). activate.bat in cmd /k is flaky with spaces in repo path and parallel windows.
+function Start-PythonScriptCmdK {
+  param(
+    [Parameter(Mandatory = $true)][string]$WorkDir,
+    [Parameter(Mandatory = $true)][string]$PythonExe,
+    [Parameter(Mandatory = $true)][string]$ArgumentsLine
+  )
+  $cmdLine = ('"{0}" {1}' -f $PythonExe, $ArgumentsLine)
+  Start-Process -FilePath "cmd.exe" -ArgumentList @("/k", $cmdLine) -WindowStyle Normal -WorkingDirectory $WorkDir
+}
+
+function Test-VoiceUseMockEnv {
+  $v = $env:VOICE_USE_MOCK
+  if (-not $v) { return $false }
+  return $v.Trim().ToLowerInvariant() -match '^(1|true|yes)$'
+}
+
+function Wait-VoiceServerHealth {
+  param(
+    [Parameter(Mandatory = $true)][string]$Uri,
+    [int]$MaxSeconds = 120,
+    [Parameter(Mandatory = $true)][string]$ServiceName,
+    [string]$StillWaitingHint = ""
+  )
+  $deadline = (Get-Date).AddSeconds($MaxSeconds)
+  $tick = 0
+  Write-Host "Waiting for $ServiceName at $Uri (max ${MaxSeconds}s)..."
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $r = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 8
+      if ($r.StatusCode -eq 200) {
+        Write-Host "$ServiceName OK." -ForegroundColor Green
+        return $true
+      }
+    } catch {
+      # connection refused / still loading model
+    }
+    $tick++
+    if ($tick -eq 1 -or $tick % 8 -eq 0) {
+      $extra = if ($StillWaitingHint) { " $StillWaitingHint" } else { "" }
+      Write-Host "  ... still waiting ($ServiceName).$extra" -ForegroundColor DarkGray
+    }
+    Start-Sleep -Seconds 3
+  }
+  return $false
+}
+
+if ($TextChatOnly) {
+  Write-Step "Voice AI Banking - text chat stack (no voice servers)"
+} else {
+  Write-Step "Voice AI Banking - local stack"
+}
 Write-Host "Repo: $RepoRoot"
 
 $py = Join-Path $RepoRoot ".venv\Scripts\python.exe"
@@ -119,7 +174,7 @@ if ($apiAlready) {
     exit 1
   }
 
-  Start-CmdKeepOpen -WorkDir $RepoRoot -CommandTail 'call .venv\Scripts\activate.bat && python run_runtime_api.py'
+  Start-PythonScriptCmdK -WorkDir $RepoRoot -PythonExe $py -ArgumentsLine "run_runtime_api.py"
 
   if (-not (Wait-BankingApi -MaxSeconds 120)) {
     Write-Host "ERROR: API did not become ready in time. Check the 'Banking API' window for errors." -ForegroundColor Red
@@ -127,35 +182,66 @@ if ($apiAlready) {
   }
 }
 
-Write-Step "Local Armenian STT / TTS (HTTP)"
-$wm = $env:VOICE_WHISPER_MODEL
-if ($wm -and $wm.Trim()) {
-  $sttModel = $wm.Trim()
-} else {
-  $sttModel = "medium"
-}
-if (-not (Test-TcpPortOpen -Port 8088)) {
-  Write-Host "Starting STT on :8088 (Whisper model=$sttModel; set VOICE_WHISPER_MODEL to override)..." -ForegroundColor DarkGray
-  $sttCmdTail = 'call .venv\Scripts\activate.bat && python scripts\voice_http_stt_server.py --model ' + $sttModel
-  Start-CmdKeepOpen -WorkDir $RepoRoot -CommandTail $sttCmdTail
+if (-not $TextChatOnly) {
+  Write-Step "Local Armenian STT / TTS (HTTP)"
+  $wm = $env:VOICE_WHISPER_MODEL
+  if ($wm -and $wm.Trim()) {
+    $sttModel = $wm.Trim()
+  } else {
+    $sttModel = "small"
+  }
+  # Start TTS before STT so Edge-TTS binds while Whisper is still loading (avoids TTS window losing the race on busy CPUs).
+  if (-not (Test-TcpPortOpen -Port 8089)) {
+    Write-Host "Starting TTS on :8089..." -ForegroundColor DarkGray
+    Start-PythonScriptCmdK -WorkDir $RepoRoot -PythonExe $py -ArgumentsLine "scripts\voice_http_tts_server.py"
+    Start-Sleep -Seconds 3
+  } else {
+    Write-Host "Port 8089 already in use — skipping TTS server (reuse existing)." -ForegroundColor DarkGray
+  }
+  if (-not (Test-TcpPortOpen -Port 8088)) {
+    Write-Host ('Starting STT on :8088 (Whisper model={0}; override with env VOICE_WHISPER_MODEL).' -f $sttModel) -ForegroundColor DarkGray
+    $sttArgs = "scripts\voice_http_stt_server.py --model $sttModel"
+    Start-PythonScriptCmdK -WorkDir $RepoRoot -PythonExe $py -ArgumentsLine $sttArgs
+    Start-Sleep -Seconds 3
+  } else {
+    Write-Host "Port 8088 already in use — skipping STT server (reuse existing)." -ForegroundColor DarkGray
+  }
+  Write-Host "Ensure .env has VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe and VOICE_TTS_ENDPOINT=http://127.0.0.1:8089/synthesize" -ForegroundColor DarkGray
+
+  if (-not $SkipVoiceServersHealthCheck -and -not (Test-VoiceUseMockEnv)) {
+    if (-not (Wait-VoiceServerHealth -Uri "http://127.0.0.1:8088/health" -MaxSeconds 360 -ServiceName "STT (Whisper on :8088)" -StillWaitingHint "Server listens immediately; 503 means Whisper is still loading or downloading weights. VOICE_WHISPER_MODEL=base is fastest.")) {
+      Write-Host ""
+      Write-Host 'ERROR: STT never became ready. The voice agent will fail (connection refused on port 8088).' -ForegroundColor Red
+      Write-Host 'Open the STT cmd window; if imports fail: pip install -e ".[voice_local_servers]"' -ForegroundColor Yellow
+      Write-Host 'Faster load: set VOICE_WHISPER_MODEL=base (quick) or tiny; better Armenian: small or medium.' -ForegroundColor Yellow
+      Write-Host 'To bypass this wait: start_stack.ps1 -SkipVoiceServersHealthCheck' -ForegroundColor DarkGray
+      exit 1
+    }
+    if (-not (Wait-VoiceServerHealth -Uri "http://127.0.0.1:8089/health" -MaxSeconds 240 -ServiceName "TTS (Edge on :8089)" -StillWaitingHint "Check the TTS cmd window for import or bind errors.")) {
+      Write-Host ""
+      Write-Host "ERROR: TTS never became ready on :8089. Voice answers will not speak." -ForegroundColor Red
+      Write-Host 'Open the TTS cmd window and check edge-tts and miniaudio errors.' -ForegroundColor Yellow
+      exit 1
+    }
+  } elseif (Test-VoiceUseMockEnv) {
+    Write-Host 'VOICE_USE_MOCK set — skipping STT and TTS health wait.' -ForegroundColor DarkGray
+  } else {
+    Write-Host "-SkipVoiceServersHealthCheck: confirm STT/TTS yourself before using voice." -ForegroundColor Yellow
+  }
+
+  Write-Step "Voice agent (LiveKit participant)"
+  $env:NO_PAUSE = "1"
+  Start-CmdKeepOpen -WorkDir $RepoRoot -CommandTail 'call scripts\run_voice_agent.bat'
+
   Start-Sleep -Seconds 2
 } else {
-  Write-Host "Port 8088 already in use — skipping STT server (reuse existing)." -ForegroundColor DarkGray
+  Write-Host ""
+  Write-Host "-TextChatOnly: skipped STT, TTS, and voice agent. Start them manually when needed:" -ForegroundColor Cyan
+  Write-Host '  STT:  .venv\Scripts\python.exe scripts\voice_http_stt_server.py' -ForegroundColor DarkGray
+  Write-Host '  TTS:  .venv\Scripts\python.exe scripts\voice_http_tts_server.py' -ForegroundColor DarkGray
+  Write-Host '  Agent: scripts\run_voice_agent.bat' -ForegroundColor DarkGray
+  Write-Host ""
 }
-if (-not (Test-TcpPortOpen -Port 8089)) {
-  Write-Host "Starting TTS on :8089..." -ForegroundColor DarkGray
-  Start-CmdKeepOpen -WorkDir $RepoRoot -CommandTail 'call .venv\Scripts\activate.bat && python scripts\voice_http_tts_server.py'
-  Start-Sleep -Seconds 1
-} else {
-  Write-Host "Port 8089 already in use — skipping TTS server (reuse existing)." -ForegroundColor DarkGray
-}
-Write-Host "Ensure .env has VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe and VOICE_TTS_ENDPOINT=http://127.0.0.1:8089/synthesize" -ForegroundColor DarkGray
-
-Write-Step "Voice agent (LiveKit participant)"
-$env:NO_PAUSE = "1"
-Start-CmdKeepOpen -WorkDir $RepoRoot -CommandTail 'call scripts\run_voice_agent.bat'
-
-Start-Sleep -Seconds 2
 
 Write-Step "React UI (Vite)"
 $fe = Join-Path $RepoRoot "frontend-react"
@@ -170,6 +256,13 @@ Write-Step "Done"
 Write-Host "  UI:      http://127.0.0.1:5173" -ForegroundColor White
 Write-Host "  API:     http://127.0.0.1:8000/docs" -ForegroundColor White
 Write-Host "  LiveKit: ws://127.0.0.1:7880" -ForegroundColor White
-Write-Host "  STT:     http://127.0.0.1:8088/health (first run downloads Whisper weights)" -ForegroundColor White
-Write-Host "  TTS:     http://127.0.0.1:8089/health" -ForegroundColor White
-Write-Host "`nClose the cmd windows to stop API / voice / STT / TTS / UI. Docker: docker compose down" -ForegroundColor DarkGray
+if (-not $TextChatOnly) {
+  Write-Host "  STT:     http://127.0.0.1:8088/health (first run downloads Whisper weights)" -ForegroundColor White
+  Write-Host "  TTS:     http://127.0.0.1:8089/health" -ForegroundColor White
+}
+Write-Host ""
+if ($TextChatOnly) {
+  Write-Host "Close the API and UI cmd windows to stop. Docker: docker compose down." -ForegroundColor DarkGray
+} else {
+  Write-Host "Close the cmd windows to stop API, voice, STT, TTS, UI. Docker: docker compose down." -ForegroundColor DarkGray
+}

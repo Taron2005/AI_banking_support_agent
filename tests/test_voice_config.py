@@ -31,6 +31,8 @@ def test_voice_config_yaml_override(tmp_path: Path) -> None:
     cfg = load_voice_config(p)
     assert cfg.livekit.room_name == "test-room"
     assert cfg.behavior.verbose_trace is True
+    assert cfg.stt.timeout_seconds == 120.0
+    assert cfg.behavior.pcm_trail_pause_seconds == 0.30
 
 
 def test_voice_config_rejects_cloud_url(tmp_path: Path) -> None:

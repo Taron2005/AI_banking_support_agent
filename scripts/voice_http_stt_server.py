@@ -13,7 +13,8 @@ Run (from repo root, after deps):
 Then in .env:
   VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe
 
-Default Whisper checkpoint is ``medium`` (env ``VOICE_WHISPER_MODEL``); use ``--model small`` on slow CPUs.
+Default Whisper checkpoint is ``small`` (env ``VOICE_WHISPER_MODEL``); use ``base`` or ``tiny`` for fastest load, ``medium`` for stronger Armenian.
+Decode latency: env ``VOICE_WHISPER_BEAM`` (default ``1``), optional ``VOICE_WHISPER_BEAM_RETRY`` (default ``3``) for a second pass if the first decode is empty.
 
 VAD uses onnxruntime (Silero). If Windows reports DLL load errors for onnxruntime, use
   python scripts/voice_http_stt_server.py --vad-filter off
@@ -75,9 +76,9 @@ def main() -> None:
     p.add_argument("--port", type=int, default=8088)
     p.add_argument(
         "--model",
-        default=(os.environ.get("VOICE_WHISPER_MODEL") or "medium").strip(),
+        default=(os.environ.get("VOICE_WHISPER_MODEL") or "small").strip(),
         help="faster-whisper model (env VOICE_WHISPER_MODEL overrides). "
-        "medium/large-v3 are much better for Armenian; use small on weak CPUs.",
+        "small balances speed and quality; base/tiny load fastest; medium/large-v3 are stronger for Armenian.",
     )
     p.add_argument("--device", default="cpu", help="cpu or cuda")
     p.add_argument("--compute-type", default="int8", dest="compute_type")
@@ -86,6 +87,13 @@ def main() -> None:
         choices=("auto", "on", "off"),
         default="auto",
         help="Silero VAD inside faster-whisper: needs onnxruntime. 'auto' enables VAD only if onnxruntime loads.",
+    )
+    p.add_argument(
+        "--beam-size",
+        type=int,
+        default=0,
+        help="faster-whisper beam_size for the first decode pass (0 = env VOICE_WHISPER_BEAM or 1). "
+        "Use 1 for lowest latency; 3–5 for harder Armenian at more CPU cost.",
     )
     args = p.parse_args()
 
@@ -100,6 +108,26 @@ def main() -> None:
                 "onnxruntime not usable; transcribe will use vad_filter=False. "
                 "Fix ONNX (see docstring) or pass --vad-filter on after repairing it."
             )
+
+    def _beam_from_env(primary: int) -> int:
+        if primary > 0:
+            return max(1, min(primary, 8))
+        raw = (os.environ.get("VOICE_WHISPER_BEAM") or "1").strip()
+        try:
+            return max(1, min(int(raw or "1"), 8))
+        except ValueError:
+            return 1
+
+    def _beam_retry() -> int:
+        raw = (os.environ.get("VOICE_WHISPER_BEAM_RETRY") or "3").strip()
+        try:
+            return max(1, min(int(raw or "3"), 8))
+        except ValueError:
+            return 3
+
+    beam_primary = _beam_from_env(args.beam_size)
+    beam_retry = _beam_retry()
+    logger.info("STT decode: beam_primary=%s beam_retry=%s", beam_primary, beam_retry)
 
     try:
         from faster_whisper import WhisperModel
@@ -118,13 +146,29 @@ def main() -> None:
 
     import uvicorn
 
-    logger.info(
-        "Loading Whisper model=%s device=%s vad_filter=%s …",
-        args.model,
-        args.device,
-        vad_filter,
-    )
-    model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
+    # Load Whisper in a background thread so uvicorn binds immediately. Otherwise /health cannot
+    # respond until weights download + load finish (often several minutes; start_stack would see
+    # connection refused and look like a failure).
+    model_holder: dict = {"model": None, "error": None}
+
+    def _load_whisper() -> None:
+        try:
+            logger.info(
+                "Loading Whisper model=%s device=%s vad_filter=%s …",
+                args.model,
+                args.device,
+                vad_filter,
+            )
+            model_holder["model"] = WhisperModel(
+                args.model, device=args.device, compute_type=args.compute_type
+            )
+            logger.info("Whisper model ready.")
+        except Exception:
+            logger.exception("Whisper model load failed")
+            model_holder["error"] = "model_load_failed"
+
+    threading.Thread(target=_load_whisper, name="whisper-load", daemon=True).start()
+
     # Blocking Whisper in the asyncio event loop starves other requests (2nd PTT turn timeouts / empty STT).
     _transcribe_lock = threading.Lock()
     # Nudges hy model toward domain vocabulary (reduces letter/word errors on banking terms).
@@ -136,13 +180,17 @@ def main() -> None:
 
     def _transcribe_sync(audio_arr: np.ndarray, lang_code: str | None) -> str:
         def _run(*, use_vad: bool, beam: int) -> str:
-            segments, _info = model.transcribe(
+            m = model_holder["model"]
+            if m is None:
+                raise RuntimeError("whisper model not ready")
+            b = max(1, beam)
+            segments, _info = m.transcribe(
                 audio_arr,
                 language=lang_code,
                 vad_filter=use_vad,
-                beam_size=beam,
-                best_of=max(1, beam),
-                patience=1.15,
+                beam_size=b,
+                best_of=b,
+                patience=1.0 if b <= 1 else 1.1,
                 # Slightly more tolerant of quiet / accented speech (fewer false "no speech" drops).
                 no_speech_threshold=0.5,
                 initial_prompt=_HY_BANKING_HINT,
@@ -153,11 +201,14 @@ def main() -> None:
 
         with _transcribe_lock:
             rms = float(np.sqrt(np.mean(np.square(audio_arr)))) if audio_arr.size else 0.0
-            # beam_size>1 improves Armenian word accuracy (CPU cost acceptable for PTT).
-            text = _run(use_vad=vad_filter, beam=5)
+            # Fast path: low beam first (real-time PTT). Escalate beam only if we likely have speech.
+            text = _run(use_vad=vad_filter, beam=beam_primary)
             if not text and vad_filter and rms > 0.002:
                 logger.info("STT empty with VAD; retrying without VAD (rms=%.5f)", rms)
-                text = _run(use_vad=False, beam=5)
+                text = _run(use_vad=False, beam=beam_primary)
+            if not text and rms > 0.002 and beam_retry > beam_primary:
+                logger.info("STT still empty; retry with wider beam=%s (rms=%.5f)", beam_retry, rms)
+                text = _run(use_vad=False, beam=beam_retry)
             if not text and rms > 0.002:
                 logger.info("STT still empty; final pass beam=1 without VAD (rms=%.5f)", rms)
                 text = _run(use_vad=False, beam=1)
@@ -186,6 +237,13 @@ def main() -> None:
             )
         if audio.size == 0:
             return {"text": ""}
+        if model_holder["error"]:
+            return JSONResponse(
+                {"error": "model_unavailable", "detail": model_holder["error"]},
+                status_code=500,
+            )
+        if model_holder["model"] is None:
+            return JSONResponse({"error": "model_loading"}, status_code=503)
         try:
             lang_code = lang if lang else None
             text = await asyncio.to_thread(_transcribe_sync, audio, lang_code)
@@ -199,7 +257,29 @@ def main() -> None:
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "service": "voice-http-stt"}
+        if model_holder["error"]:
+            return JSONResponse(
+                {
+                    "status": "error",
+                    "service": "voice-http-stt",
+                    "detail": model_holder["error"],
+                },
+                status_code=500,
+            )
+        if model_holder["model"] is None:
+            return JSONResponse(
+                {
+                    "status": "loading",
+                    "service": "voice-http-stt",
+                    "model": args.model,
+                },
+                status_code=503,
+            )
+        return {
+            "status": "ok",
+            "service": "voice-http-stt",
+            "model": args.model,
+        }
 
     uvicorn.run(app, host=args.host, port=args.port)
 

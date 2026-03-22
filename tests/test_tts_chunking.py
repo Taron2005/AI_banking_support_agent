@@ -2,7 +2,12 @@ from voice_ai_banking_support_agent.voice.tts_chunking import split_for_sequenti
 
 
 def test_split_armenian_sentences() -> None:
-    text = "Առաջին նախադասությունը։ Երկրորդը նույնպես։ Երրորդ։"
+    # Each clause must exceed min_chunk_chars (20) or the chunker merges short tails for fewer TTS round trips.
+    text = (
+        "Առաջին նախադասությունը բավական երկար է որպեսզի չմիանա հաջորդին։ "
+        "Երկրորդ նախադասությունը նույնպես երկար է և պարզ է։ "
+        "Երրորդ նախադասությունը նույնպես երկար է։"
+    )
     parts = split_for_sequential_tts(text, max_chunk_chars=200)
     assert len(parts) >= 2
     joined = " ".join(parts)

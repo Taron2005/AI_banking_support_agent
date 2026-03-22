@@ -1,6 +1,6 @@
 """Contract tests for LiveKit data-channel topics (voice UI + agent)."""
 
-from voice_ai_banking_support_agent.voice.livekit_agent import (
+from voice_ai_banking_support_agent.voice.voice_topics import (
     TOPIC_ASSISTANT_TEXT,
     TOPIC_ASSISTANT_TEXT_DELTA,
     TOPIC_PTT,

@@ -19,6 +19,7 @@ Run:
 
 Optional env:
   EDGE_TTS_FALLBACK_VOICES=en-US-AndrewMultilingualNeural,en-US-GuyNeural
+  VOICE_EDGE_TTS_RATE=+10%   (Edge rate; default +10% for slightly faster speech, use +0% for normal)
 
 Then in .env:
   VOICE_TTS_ENDPOINT=http://127.0.0.1:8089/synthesize
@@ -65,8 +66,10 @@ def _parse_fallback_voices(arg: str | None) -> list[str]:
     return out
 
 
-async def _edge_stream_to_mp3(edge_tts_mod: object, text: str, voice: str) -> bytes:
-    communicate = edge_tts_mod.Communicate(text, voice)
+async def _edge_stream_to_mp3(
+    edge_tts_mod: object, text: str, voice: str, *, rate: str = "+0%"
+) -> bytes:
+    communicate = edge_tts_mod.Communicate(text, voice, rate=rate)
     mp3_data = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -79,6 +82,8 @@ async def _synthesize_mp3_with_fallback(
     text: str,
     primary_voice: str,
     fallbacks: list[str],
+    *,
+    rate: str = "+0%",
 ) -> tuple[bytes, str, list[str]]:
     """Return (mp3_bytes, voice_used, errors_per_attempt)."""
     errors: list[str] = []
@@ -91,7 +96,7 @@ async def _synthesize_mp3_with_fallback(
 
     for voice in chain:
         try:
-            mp3 = await _edge_stream_to_mp3(edge_tts_mod, text, voice)
+            mp3 = await _edge_stream_to_mp3(edge_tts_mod, text, voice, rate=rate)
             if mp3:
                 if voice != primary_voice:
                     logger.warning(
@@ -123,6 +128,9 @@ def main() -> None:
     )
     args = p.parse_args()
     fallback_list = _parse_fallback_voices(args.fallback_voices)
+    edge_rate = (os.environ.get("VOICE_EDGE_TTS_RATE") or "+10%").strip()
+    if not edge_rate.startswith(("+", "-")):
+        edge_rate = "+10%"
 
     try:
         import edge_tts
@@ -188,6 +196,7 @@ def main() -> None:
             text,
             voice,
             fallback_list,
+            rate=edge_rate,
         )
         if not mp3_data:
             return JSONResponse(
@@ -226,6 +235,7 @@ def main() -> None:
             "service": "voice-http-tts",
             "default_voice": args.voice,
             "fallback_voices": fallback_list,
+            "edge_tts_rate": edge_rate,
             "handler": "starlette-request-json-body-v2",
         }
 

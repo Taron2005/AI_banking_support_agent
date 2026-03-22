@@ -20,8 +20,8 @@ stt:
   # Prefer .env VOICE_STT_ENDPOINT; or set here if .env is not loaded:
   # endpoint: "http://127.0.0.1:8088/transcribe"
   endpoint: null
-  # Local Whisper is often slow (first load / CPU): 180s avoids read timeout → mock → failed voice turn.
-  timeout_seconds: 180
+  # Local Whisper on CPU: allow enough time for decode; stack health-check waits separately.
+  timeout_seconds: 120
   multipart_field: "file"
   upload_filename: "audio.wav"
   api_key: null
@@ -36,6 +36,7 @@ tts:
   # scripts/voice_http_tts_server.py maps "default" → hy-AM-AnahitNeural (edge-tts)
   voice_name: "default"
   output_encoding: "wav"
+  pcm_s16le_sample_rate: 24000
   # Prefer .env VOICE_TTS_ENDPOINT; or uncomment:
   # endpoint: "http://127.0.0.1:8089/synthesize"
   endpoint: null
@@ -49,10 +50,21 @@ behavior:
   debug: false
   verbose_trace: false
   max_response_chars: 16000
+  # Assistant track sample rate (must match TTS normalization target; default 24 kHz like Edge-tts stack).
+  livekit_publish_sample_rate: 24000
+  # false = push TTS audio to LiveKit as fast as possible (lower latency).
+  livekit_playout_realtime_pacing: false
+  livekit_playout_frame_ms: 10
+  # Must match text chat retrieval depth (see App.jsx top_k when posting /chat).
+  chat_top_k: 8
   # Voice uses FastAPI POST /chat by default (same session_id as React) — start run_runtime_api.py first.
   # VOICE_RUNTIME_HTTP=0 uses in-process orchestrator + stream_llm_tokens below.
   route_through_runtime_api: true
   runtime_api_url: "http://127.0.0.1:8000"
   runtime_api_timeout_seconds: 180
-  # Gemini token streaming (assistant.text.delta) only when route_through_runtime_api: false.
-  stream_llm_tokens: true
+  # Agent polls for remote mic subscription after PTT start (browser should publish track first).
+  mic_track_wait_seconds: 0.7
+  # After PTT end: keep buffering while trailing WebRTC frames arrive (>= ~220ms browser unpublish delay).
+  pcm_trail_pause_seconds: 0.30
+  # Gemini token streaming (assistant.text.delta) only when route_through_runtime_api: false. Default off = fewer timeouts.
+  stream_llm_tokens: false

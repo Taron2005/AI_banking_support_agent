@@ -6,14 +6,14 @@ import re
 def split_for_sequential_tts(
     text: str,
     *,
-    max_chunk_chars: int = 380,
-    min_chunk_chars: int = 10,
+    max_chunk_chars: int = 480,
+    min_chunk_chars: int = 20,
 ) -> list[str]:
     """
     Split Armenian (or mixed) assistant text into chunks for sequential TTS playout.
 
-    Smaller first chunks reduce time-to-first-audio after the LLM returns. Chunks are
-    merged when splits would be too short, and long paragraphs are split on spaces.
+    Larger chunks mean fewer HTTP TTS round trips (faster overall playout). Very short
+    fragments are merged with neighbors to avoid tiny requests.
     """
 
     raw = (text or "").strip()
@@ -26,8 +26,8 @@ def split_for_sequential_tts(
     if not pieces:
         return [raw]
 
-    # One sentence (or line fragment) per chunk by default so the first TTS request stays small
-    # and time-to-first-audio improves; only glue very short fragments to neighbors.
+    # Prefer sentence boundaries, but merge fragments shorter than min_chunk_chars into neighbors
+    # so we avoid tiny TTS requests while keeping larger max_chunk_chars for fewer round trips.
     merged: list[str] = []
     for p in pieces:
         if not merged:

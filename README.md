@@ -8,6 +8,8 @@ End-to-end **voice and text** customer-support assistant for **three Armenian re
 
 This repository delivers a **manifest-driven RAG pipeline** (scrape → clean → chunk → FAISS), a **strict runtime** (topic and bank gating, evidence checks, anti-hallucination prompts and post-processing), a **FastAPI** service (`/chat`, health, LiveKit token endpoints), a **React** UI, and a **Python LiveKit agent** that routes microphone audio through **HTTP STT** (Armenian), the same orchestration as text chat, and **HTTP TTS** back to the room. **LiveKit Cloud is not used**; cloud-style URLs are rejected in configuration and in the browser client.
 
+**Private GitHub repo:** If the repository is private, invite reviewer **`HaykTarkhanyan`** with **read** access (per submission instructions).
+
 **Banks in scope (official sites only):** ACBA (`acba`), Ameriabank (`ameriabank`), IDBank (`idbank`) — defined in `manifests/banks.yaml`. Adding another bank is a configuration and re-indexing step, not a fork of core logic.
 
 ---
@@ -74,15 +76,17 @@ sequenceDiagram
   AG->>LK: assistant audio + voice.transcript.final
 ```
 
-**Streaming LLM path (default for voice):** After STT, the agent calls `RuntimeOrchestrator.stream_handle` instead of blocking `handle`. **Gemini** is invoked with **`generate_content(..., stream=True)`**; token chunks are published on LiveKit topic **`assistant.text.delta`** (UTF-8 JSON `{"text":"…"}`) so the React UI can show the **Armenian answer as it is generated**. When the stream finishes, the same **URL scrubbing, footnote, and evidence rules** as the non-streaming path are applied once, then **`assistant.text`** carries the final payload (with `streamed: true`) and **TTS** runs on that scrubbed text (sentence-chunked as before). Early exits (refusal, clarify, extractive-only backend) still emit a **single** `assistant.text` with no deltas. Disable streaming with `stream_llm_tokens: false` under `behavior:` in `voice_config.yaml`.
+**Streaming LLM path (optional, in-process only):** When `behavior.stream_llm_tokens: true` and **`VOICE_RUNTIME_HTTP=0`**, after STT the agent calls `RuntimeOrchestrator.stream_handle` instead of blocking `handle`. **Gemini** uses **`generate_content(..., stream=True)`**; token chunks go to LiveKit topic **`assistant.text.delta`**. On completion, the same **URL scrubbing and evidence rules** as the non-streaming path run once, then **`assistant.text`** carries the final payload (`streamed: true`) and **TTS** runs on that text. The default is **`stream_llm_tokens: false`** for fewer moving parts during demos (HTTP `/chat` path is always non-streaming). Early exits still emit a **single** `assistant.text` with no deltas.
 
-**Latency-oriented agent behavior:** STT, RAG (`RuntimeOrchestrator`), and TTS run in a **thread pool** via `asyncio.to_thread` so the LiveKit asyncio loop stays responsive. Assistant replies are **split on sentence boundaries** (including Armenian **։**) into **mostly one sentence per TTS HTTP call**, then played **back-to-back** on the assistant track so **time-to-first-audio** improves on longer answers (more TTS round trips total, but earlier start of speech).
+**LiveKit playout:** TTS audio is **decoded to mono PCM**, **resampled to `behavior.livekit_publish_sample_rate`** (default **24 kHz**), then pushed to `AudioSource` in small frames. **`livekit_playout_realtime_pacing`** (default **off**) avoids artificial delays between frames; turn on via **`VOICE_LIVEKIT_PLAYOUT_PACING=1`** if you hear underruns.
 
-**Frontend live feedback:** After **Connect voice**, the UI shows a **live mic level meter** while you hold **Mic**, plus **optional browser SpeechRecognition** (`hy-AM`) for **interim/final on-screen captions**. That preview is for confidence only; the **authoritative** user text for RAG is still produced by your configured **HTTP STT** after **Stop & send**.
+**Latency-oriented agent behavior:** STT, RAG (`RuntimeOrchestrator`), and TTS run in a **thread pool** via `asyncio.to_thread` so the LiveKit asyncio loop stays responsive. TTS uses **larger text chunks** (~**480** chars) where possible to cut HTTP round trips; answers are still split on sentence boundaries (including Armenian **։**) when segments are long.
 
-**Local STT server:** `scripts/voice_http_stt_server.py` uses **faster-whisper** with **VAD** (when onnxruntime works), **`beam_size=5`**, **`best_of=5`**, and a **banking-oriented `initial_prompt`** for clearer Armenian on domain terms. Default model is **`medium`** (override with **`VOICE_WHISPER_MODEL`** or `--model small` on weak CPUs). On Windows, **`START_STACK.bat` / `start_stack.ps1`** start STT on **:8088** and TTS on **:8089** when those ports are free; set **`VOICE_STT_ENDPOINT`** / **`VOICE_TTS_ENDPOINT`** in `.env` accordingly. Transcripts are lightly **normalized** before RAG (`voice/hy_stt_postprocess.py`).
+**Frontend live feedback:** After **Connect voice**, the UI shows a **mic level meter** while you hold **Mic**. **Only server Whisper** (HTTP STT) produces the transcript after **Stop & send**; the recognized line appears in chat with an **STT** badge and is exactly what is sent to **`POST /chat`**.
 
-**Local TTS server:** `scripts/voice_http_tts_server.py` uses **edge-tts** (Microsoft). In some regions, **Armenian `hy-AM-*` voices are not offered** by the Edge catalog (`NoAudioReceived`). The server **retries with multilingual English voices** that still accept Armenian Unicode text (accented but functional). Optional: `EDGE_TTS_FALLBACK_VOICES` or `--fallback-voices`.
+**Local STT server:** `scripts/voice_http_stt_server.py` uses **faster-whisper** with optional **Silero VAD** (when **onnxruntime** loads). Default model size is **`small`** in **`start_stack.ps1`** / env **`VOICE_WHISPER_MODEL`** (use **`base` / `tiny`** for fastest load, **`medium`** for stronger Armenian). On Windows, **`START_STACK.bat` / `start_stack.ps1`** can start STT on **:8088**; set **`VOICE_STT_ENDPOINT`** in `.env`. Transcripts are lightly **normalized** before RAG (`voice/hy_stt_postprocess.py`).
+
+**Local TTS server:** `scripts/voice_http_tts_server.py` uses **edge-tts** (Microsoft). Default speech **rate** is **`+10%`** (env **`VOICE_EDGE_TTS_RATE`**, e.g. **`+0%`** for normal). In some regions, **Armenian `hy-AM-*` voices are not offered** (`NoAudioReceived`); the server **retries with multilingual English voices** that still accept Armenian Unicode. Optional: **`EDGE_TTS_FALLBACK_VOICES`**.
 
 **LiveKit:** Docker image `livekit/livekit-server`, signaling URL such as `ws://127.0.0.1:7880`. JWTs for browser and agent: `GET /api/livekit/token?identity=...` from this API, or offline token generation via `scripts/generate_livekit_token.py`.
 
@@ -122,7 +126,7 @@ sequenceDiagram
 | Data root | `data_manifest_update_hy/` |
 | Index name | `hy_model_index` |
 
-Details: `DATASETS.md`. A prebuilt index (and chunk JSONL) is included so evaluators can run the stack **without** a long scrape/embed pass unless they choose to rebuild. **Raw scraped HTML** under `data_manifest_update_hy/raw_html/` is **not** committed (`.gitignore`); run **`scrape`** locally if you need to regenerate cleaned docs and chunks from source pages.
+Details: `DATASETS.md`. **Chunk JSONL** (and related cleaned artifacts) are included so the corpus is inspectable. **FAISS vector files** (`faiss.index`, `metadata.jsonl`, `index_info.json`) are **not** committed — run **`build-index`** once after clone (see `data_manifest_update_hy/index/hy_model_index/README.md`). **Raw scraped HTML** under `data_manifest_update_hy/raw_html/` is also omitted; run **`scrape`** locally to regenerate from live sites.
 
 ---
 
@@ -139,12 +143,16 @@ Details: `DATASETS.md`. A prebuilt index (and chunk JSONL) is included so evalua
 
 From the repository root:
 
+1. Create and activate a virtual environment:
+
 ```bash
 python -m venv .venv
 ```
 
 **Windows (PowerShell):** `.\.venv\Scripts\Activate.ps1`  
 **Linux / macOS:** `source .venv/bin/activate`
+
+2. Install the package and dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -153,6 +161,12 @@ pip install -e ".[voice]"
 ```
 
 The `[voice]` extra installs the LiveKit Python SDK for the agent. For the **reference** STT/TTS servers only: `pip install -e ".[voice_local_servers]"`.
+
+3. **Build the retrieval index** (required before `/chat` or voice; generates ignored files under `data_manifest_update_hy/index/hy_model_index/`):
+
+```bash
+python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml build-index --index-name hy_model_index --banks acba ameriabank idbank --topics credit deposit branch
+```
 
 ### Environment files
 
@@ -239,6 +253,34 @@ The `slow` suite (session-scoped client + full embedding load) is in `tests/test
 
 ---
 
+## Voice pipeline (architecture, reliability, troubleshooting)
+
+**End-to-end flow:** Browser **publishes the local mic track first**, then sends `voice.ptt` `start` → agent spawns a **fresh LiveKit `AudioStream` consumer** for that participant (buffers PCM only while `start` is active) → on `end`, agent runs **STT → same `POST /chat` as text** → publishes full **`assistant.text`** for the UI → **`prepare_text_for_tts`** strips URLs / «Աղբյուրներ» / markdown links for **TTS only** (English words inside Armenian are kept) → assistant audio plays → **`voice.state: idle`** is always sent in a **`finally`** block so the next turn cannot stay stuck in “processing”.
+
+**Why the second voice turn used to fail:** The mic consumer was tied to a **single** `async for` over `AudioStream`. After the browser **unpublished** the mic between turns (or the SDK closed the stream), that loop **ended** and the task finished. **`track_subscribed` does not fire again** for the same session, so **no audio was buffered** on turn 2+. **Fix:** cache the remote track on subscribe, and on **every** PTT **`start`** cancel any old consumer and **start a new** `AudioStream` reader; **poll** up to `mic_track_wait_seconds` if the track is not subscribed yet. The React client now **publishes the mic before** sending `start` to avoid a race.
+
+**Second turn “nothing happens” (no error):** The agent used to flip **`_ptt_recording` off before** waiting for trailing frames, while the browser keeps sending audio for **~220 ms** after `voice.ptt` `end` and only then **unpublishes** the mic. That **dropped the tail** of every turn; short second utterances could fall **below the minimum PCM size**, exit early, and only return to **idle** — so the UI looked “stuck” between *Recognizing* and *Ready* without a clear error. **Fix:** keep recording **on** during **`pcm_trail_pause_seconds`** (default **0.30 s**, must cover the client unpublish delay), **then** drain the buffer. If audio is still too short, the agent now publishes **`voice.state` error / `audio_too_short`**. Tune with **`VOICE_PCM_TRAIL_PAUSE_SECONDS`** (e.g. **0.35**) if needed.
+
+**Mic level meter “dead” on the second PTT:** Reusing the same `LocalAudioTrack` after `unpublishTrack` often leaves the underlying `MediaStreamTrack` **ended**, so the Web Audio analyser gets **no samples**. The UI now **stops** the local track after each **Stop & send** and **creates a fresh mic track** on the next **Mic** press so the meter keeps working.
+
+**Voice vs text chat (same brain):** With default `route_through_runtime_api`, each voice turn calls the same **`POST /chat`** handler as the composer, with the same **`top_k`** (`behavior.chat_top_k` / env `VOICE_CHAT_TOP_K`, default **8** — keep in sync with `App.jsx`). Grounding and refusal rules are identical; only **TTS** applies `prepare_text_for_tts` (tables → short Armenian cue, decimal commas like `22,5` → spoken “ամբողջ”, a few banking abbreviations, no URL reading). The **full** answer (including tables and sources) stays in the chat bubble.
+
+**Single transcript source:** The React HUD no longer uses browser **Web Speech API** (it disagreed with Whisper). **Whisper (HTTP STT)** is the only recognition path; the **STT** chat line is exactly what is sent to `/chat`.
+
+**Faster TTS:** Local `voice_http_tts_server.py` defaults to Edge **`rate=+10%`** (override with **`VOICE_EDGE_TTS_RATE`**, e.g. `+0%`). LiveKit playout uses **`livekit_playout_realtime_pacing: false`** by default so frames are not artificially throttled; TTS chunks are larger (**~480** chars) for fewer HTTP round trips.
+
+**Timeouts:** STT, `/chat`, streaming LLM chunks, per-chunk TTS, and full stream turns use `asyncio.wait_for` with values from `voice_config` / `.env` (`VOICE_STT_TIMEOUT_SECONDS`, `VOICE_RUNTIME_API_TIMEOUT_SECONDS`, `VOICE_TTS_TIMEOUT_SECONDS`). Failures publish `voice.state: error` then **always** `idle`.
+
+**Debugging:** Logs include `voice_turn id=<turn_id> stage=... elapsed_ms=...` for each turn. Search the voice agent console for `voice_turn` or `Mic AudioStream ended`.
+
+**`WinError 10061` / connection refused on :8088:** Nothing is listening — the STT window exited, never started, or is still downloading the Whisper model in the background. Open the **STT** console for errors; run `python scripts/voice_http_stt_server.py` manually if needed. **`START_STACK.bat`** now waits for `http://127.0.0.1:8088/health` (up to several minutes on first **medium** model load) and aborts with a clear error if STT never binds.
+
+**Manual QA (repeated voice):** Connect LiveKit voice → ask **five** separate questions via PTT → after each answer, UI returns to **Ready**; disconnect and reconnect once; confirm STT/TTS env endpoints set (`VOICE_STT_ENDPOINT`, `VOICE_TTS_ENDPOINT`).
+
+**Recommended local stack (Armenian banking):** **`faster-whisper`** with model **`medium`** or **`large-v3`** (`VOICE_WHISPER_MODEL`, trade-off: accuracy vs CPU) for STT; **`edge-tts`** with **`hy-AM-AnahitNeural`** and automatic multilingual fallbacks for TTS. Both stay behind the existing **HTTP** `STTProvider` / `TTSProvider` contracts so you can swap in a hosted API later without changing the agent loop.
+
+---
+
 ## Operational notes and limitations
 
 - **Scrapers** depend on live HTML; site redesigns may require manifest or parser updates.  
@@ -255,7 +297,7 @@ The `slow` suite (session-scoped client + full embedding load) is in `tests/test
 | Criterion | Evidence in repository |
 |-----------|-------------------------|
 | Accuracy and guardrails | `runtime/topic_classifier.py`, `runtime/orchestrator.py`, `runtime/refusal.py`, `runtime/answer_generator.py`, `runtime/rag_prompts.py`; tests under `tests/test_runtime_*.py`, `tests/test_bank_scope.py`, `tests/test_pending_clarify_flow.py` |
-| Voice experience | `voice/livekit_agent.py`, `voice/stt.py`, `voice/tts.py`, `frontend-react/src/App.jsx`; `tests/test_voice_*.py` |
+| Voice experience | `voice/livekit_agent.py`, `voice/livekit_mic.py`, `voice/tts_speech_prepare.py`, `voice/stt.py`, `voice/tts.py`, `frontend-react/src/App.jsx`; `tests/test_voice_*.py`, `tests/test_tts_speech_prepare.py` |
 | Architecture and scalability | `manifests/banks.yaml`, `scrapers/`, `pipelines/`, `indexing/`, `runtime/`, `voice/`; `docker-compose.yml`, `docker/livekit.yaml` |
 | Documentation and reproducibility | This README, `DATASETS.md`, example configs (`*.example`, `runtime_config.example.yaml`) |
 
