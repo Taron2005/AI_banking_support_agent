@@ -10,8 +10,6 @@ This repository delivers a **manifest-driven RAG pipeline** (scrape → clean �
 
 **Banks in scope (official sites only):** ACBA (`acba`), Ameriabank (`ameriabank`), IDBank (`idbank`) — defined in `manifests/banks.yaml`. Adding another bank is a configuration and re-indexing step, not a fork of core logic.
 
-**Private repository:** If this repo is private for submission, add **HaykTarkhanyan** with **read** access in GitHub (Settings → Collaborators). Invites cannot be generated from the codebase.
-
 ---
 
 ## Product scope and guardrails
