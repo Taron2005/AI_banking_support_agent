@@ -80,7 +80,7 @@ sequenceDiagram
 
 **Frontend live feedback:** After **Connect voice**, the UI shows a **live mic level meter** while you hold **Mic**, plus **optional browser SpeechRecognition** (`hy-AM`) for **interim/final on-screen captions**. That preview is for confidence only; the **authoritative** user text for RAG is still produced by your configured **HTTP STT** after **Stop & send**.
 
-**Local STT server:** `scripts/voice_http_stt_server.py` uses **faster-whisper** with **`vad_filter=True`** and **`beam_size=1`** by default for a better speed/latency tradeoff on CPU demos (still Armenian via `language=hy`).
+**Local STT server:** `scripts/voice_http_stt_server.py` uses **faster-whisper** with **VAD** (when onnxruntime works), **`beam_size=5`**, **`best_of=5`**, and a **banking-oriented `initial_prompt`** for clearer Armenian on domain terms. Default model is **`medium`** (override with **`VOICE_WHISPER_MODEL`** or `--model small` on weak CPUs). On Windows, **`START_STACK.bat` / `start_stack.ps1`** start STT on **:8088** and TTS on **:8089** when those ports are free; set **`VOICE_STT_ENDPOINT`** / **`VOICE_TTS_ENDPOINT`** in `.env` accordingly. Transcripts are lightly **normalized** before RAG (`voice/hy_stt_postprocess.py`).
 
 **Local TTS server:** `scripts/voice_http_tts_server.py` uses **edge-tts** (Microsoft). In some regions, **Armenian `hy-AM-*` voices are not offered** by the Edge catalog (`NoAudioReceived`). The server **retries with multilingual English voices** that still accept Armenian Unicode text (accented but functional). Optional: `EDGE_TTS_FALLBACK_VOICES` or `--fallback-voices`.
 
@@ -170,11 +170,11 @@ Optional overrides in `.env`: **`EMBEDDING_MODEL_NAME`**, **`EMBEDDING_DEVICE`**
 
 | Platform | Command | What starts |
 |----------|---------|-------------|
-| Windows | `START_STACK.bat` (repo root) | Docker LiveKit, FastAPI on **:8000**, voice agent, Vite on **:5173** (`npm install` on first run). Implemented by `scripts/start_stack.ps1`. |
+| Windows | `START_STACK.bat` (repo root) | Docker LiveKit, FastAPI on **:8000**, **local STT :8088** and **TTS :8089** if those ports are free, voice agent, Vite on **:5173** (`npm install` on first run). Implemented by `scripts/start_stack.ps1`. |
 | Windows | `scripts\run_all.bat` | Same as above. |
-| Linux / macOS | `bash scripts/run_all.sh` | Docker Compose, API and voice agent in background, frontend dev server. |
+| Linux / macOS | `bash scripts/run_all.sh` | Docker Compose, API and voice agent in background, frontend dev server (start STT/TTS manually; see step 3 below). |
 
-These scripts **do not** start the optional local Whisper/Edge STT/TTS servers; use the commands below or mock voice.
+On **Windows**, set **`VOICE_STT_ENDPOINT`** / **`VOICE_TTS_ENDPOINT`** in `.env` to match the local servers. On **Linux/macOS**, start the Whisper/Edge scripts yourself or use mock voice.
 
 ### Manual order (equivalent steps)
 

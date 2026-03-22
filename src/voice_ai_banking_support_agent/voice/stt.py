@@ -171,7 +171,7 @@ class HTTPWhisperSTTProvider:
             except requests.HTTPError as exc:
                 last_exc = exc
                 code = exc.response.status_code if exc.response is not None else None
-                if code in (502, 503, 504, 524) and attempt < len(delays):
+                if code in (500, 502, 503, 504, 524) and attempt < len(delays):
                     time.sleep(delays[attempt])
                     continue
                 break

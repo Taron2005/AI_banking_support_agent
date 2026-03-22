@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import logging
+import time
 import wave
 from dataclasses import dataclass
 from typing import Protocol
@@ -105,29 +106,48 @@ class HTTPTTSProvider:
         read_to = float(self.timeout_seconds)
         connect_to = min(20.0, max(5.0, read_to * 0.15))
         timeout = (connect_to, read_to)
-        try:
-            resp = requests.post(
-                self.endpoint,
-                headers=headers,
-                json=payload,
-                timeout=timeout,
-            )
-            resp.raise_for_status()
-            ctype = (resp.headers.get("content-type") or "").lower()
-            if "application/json" in ctype:
-                body = resp.json()
-                audio = _extract_base64_audio(body, self.response_audio_field)
+        delays = (0.5, 1.5, 4.0)
+        last_exc: Exception | None = None
+        for attempt in range(len(delays) + 1):
+            try:
+                resp = requests.post(
+                    self.endpoint,
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout,
+                )
+                resp.raise_for_status()
+                ctype = (resp.headers.get("content-type") or "").lower()
+                if "application/json" in ctype:
+                    body = resp.json()
+                    audio = _extract_base64_audio(body, self.response_audio_field)
+                    if not audio:
+                        raise RuntimeError("TTS JSON response missing decodable audio field")
+                else:
+                    audio = resp.content
                 if not audio:
-                    raise RuntimeError("TTS JSON response missing decodable audio field")
-            else:
-                audio = resp.content
-            if not audio:
-                raise RuntimeError("TTS returned empty audio payload")
-            if self.output_encoding == "wav" and len(audio) >= 4 and audio[:4] != b"RIFF":
-                logger.warning("TTS payload may not be WAV despite format=wav (first bytes not RIFF).")
-            return TTSOutput(audio=audio, encoding=self.output_encoding)  # type: ignore[arg-type]
-        except Exception as exc:
-            logger.exception("HTTP TTS failed: %s", exc)
-            if self.fallback_provider is not None:
-                return self.fallback_provider.synthesize(text)
-            raise RuntimeError("TTS synthesis failed and no fallback is configured.") from exc
+                    raise RuntimeError("TTS returned empty audio payload")
+                if self.output_encoding == "wav" and len(audio) >= 4 and audio[:4] != b"RIFF":
+                    logger.warning("TTS payload may not be WAV despite format=wav (first bytes not RIFF).")
+                return TTSOutput(audio=audio, encoding=self.output_encoding)  # type: ignore[arg-type]
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                last_exc = exc
+                if attempt < len(delays):
+                    time.sleep(delays[attempt])
+                    continue
+            except requests.HTTPError as exc:
+                last_exc = exc
+                code = exc.response.status_code if exc.response is not None else None
+                if code in (500, 502, 503, 504, 524) and attempt < len(delays):
+                    time.sleep(delays[attempt])
+                    continue
+                break
+            except Exception as exc:
+                last_exc = exc
+                break
+
+        exc = last_exc if last_exc is not None else RuntimeError("TTS request failed")
+        logger.exception("HTTP TTS failed after retries: %s", exc)
+        if self.fallback_provider is not None:
+            return self.fallback_provider.synthesize(text)
+        raise RuntimeError("TTS synthesis failed and no fallback is configured.") from exc

@@ -17,6 +17,7 @@ from .session_handler import (
     resolve_runtime_session_id,
     sanitize_runtime_session_id_override,
 )
+from .hy_stt_postprocess import normalize_stt_transcript_hy
 from .stt import STTProvider, is_mock_stt_placeholder
 from .tts import TTSProvider
 from .tts_chunking import split_for_sequential_tts
@@ -97,8 +98,8 @@ class LiveKitVoiceAgent:
         if payload.encoding == "text":
             user_text = payload.content.decode("utf-8", errors="ignore").strip()
         else:
-            user_text = self._stt.transcribe(payload)
-            if not (user_text or "").strip():
+            user_text = normalize_stt_transcript_hy(self._stt.transcribe(payload).strip())
+            if not user_text:
                 logger.warning("STT returned empty text; orchestrator may refuse or mis-route.")
             elif "[mock-stt-unavailable]" in user_text:
                 logger.warning(
@@ -574,7 +575,7 @@ class LiveKitVoiceAgent:
                 await self._publish_voice_state(room, state="idle")
                 return
 
-            user_text = (user_text or "").strip()
+            user_text = normalize_stt_transcript_hy((user_text or "").strip())
             if not user_text:
                 logger.warning("STT returned empty transcript participant=%s", participant_identity)
                 await self._publish_voice_state(room, state="error", detail="stt_empty")
@@ -665,7 +666,7 @@ class LiveKitVoiceAgent:
         async with self._turn_lock:
             await self._publish_voice_state(room, state="processing")
             participant_id = str(body.get("participant_identity") or "unknown")
-            text = str(body.get("text", "") or "").strip()
+            text = normalize_stt_transcript_hy(str(body.get("text", "") or "").strip())
             participant = LiveKitParticipantContext(
                 room_name=self._voice_config.livekit.room_name,
                 participant_identity=participant_id,

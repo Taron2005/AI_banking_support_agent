@@ -13,6 +13,8 @@ Run (from repo root, after deps):
 Then in .env:
   VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe
 
+Default Whisper checkpoint is ``medium`` (env ``VOICE_WHISPER_MODEL``); use ``--model small`` on slow CPUs.
+
 VAD uses onnxruntime (Silero). If Windows reports DLL load errors for onnxruntime, use
   python scripts/voice_http_stt_server.py --vad-filter off
 or reinstall a cp310 wheel and keep protobuf<6 for Gemini/grpc:
@@ -23,6 +25,7 @@ import argparse
 import asyncio
 import io
 import logging
+import os
 import threading
 import wave
 
@@ -70,7 +73,12 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8088)
-    p.add_argument("--model", default="small", help="faster-whisper model: tiny, base, small, medium, large-v3, ...")
+    p.add_argument(
+        "--model",
+        default=(os.environ.get("VOICE_WHISPER_MODEL") or "medium").strip(),
+        help="faster-whisper model (env VOICE_WHISPER_MODEL overrides). "
+        "medium/large-v3 are much better for Armenian; use small on weak CPUs.",
+    )
     p.add_argument("--device", default="cpu", help="cpu or cuda")
     p.add_argument("--compute-type", default="int8", dest="compute_type")
     p.add_argument(
@@ -119,10 +127,11 @@ def main() -> None:
     model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
     # Blocking Whisper in the asyncio event loop starves other requests (2nd PTT turn timeouts / empty STT).
     _transcribe_lock = threading.Lock()
-    # Nudges hy model toward domain vocabulary (helps word errors + empty VAD cuts).
+    # Nudges hy model toward domain vocabulary (reduces letter/word errors on banking terms).
     _HY_BANKING_HINT = (
-        "Հարց վարկերի, ավանդների, մասնաճյուղերի մասին։ "
-        "Ամերիաբանկ, ԱԿԲԱ բանկ, ԻԴԲանկ, Ամերիա, վարկ, ավանդ, մասնաճյուղ, Երևան։"
+        "Հարց վարկերի, ավանդների, մասնաճյուղերի, տոկոսների մասին։ "
+        "Ամերիաբանկ, Ameriabank, ԱԿԲԱ բանկ, ACBA, ԻԴԲանկ, IDBank, "
+        "վարկ, ավանդ, ժամկետային ավանդ, ցպահանջ, մասնաճյուղ, բանկոմատ, Երևան, Հայաստան։"
     )
 
     def _transcribe_sync(audio_arr: np.ndarray, lang_code: str | None) -> str:
@@ -132,9 +141,13 @@ def main() -> None:
                 language=lang_code,
                 vad_filter=use_vad,
                 beam_size=beam,
-                best_of=1,
+                best_of=max(1, beam),
+                patience=1.15,
+                # Slightly more tolerant of quiet / accented speech (fewer false "no speech" drops).
+                no_speech_threshold=0.5,
                 initial_prompt=_HY_BANKING_HINT,
                 condition_on_previous_text=False,
+                without_timestamps=True,
             )
             return "".join(s.text for s in segments).strip()
 
