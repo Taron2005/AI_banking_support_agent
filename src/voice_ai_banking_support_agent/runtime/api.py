@@ -4,6 +4,11 @@ import logging
 import os
 from pathlib import Path
 
+# Before transformers / sentence_transformers (via retriever → embedder). run_runtime_api.py also sets these.
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+os.environ.setdefault("TRANSFORMERS_NO_FLAX", "1")
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)

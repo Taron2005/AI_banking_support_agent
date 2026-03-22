@@ -1,6 +1,38 @@
 {
   "index_name": "hy_model_index",
   "embedding_dim": 1024,
-  "vector_count": 439,
-  "embedding_model_name": "Metric-AI/armenian-text-embeddings-2-large"
+  "vector_count": 827,
+  "embedding_model_name": "Metric-AI/armenian-text-embeddings-2-large",
+  "banks_present": [
+    "acba",
+    "ameriabank",
+    "idbank"
+  ],
+  "topics_present": [
+    "branch",
+    "credit",
+    "deposit"
+  ],
+  "chunks_by_bank_topic": {
+    "acba/branch": 114,
+    "acba/credit": 181,
+    "acba/deposit": 109,
+    "ameriabank/branch": 7,
+    "ameriabank/credit": 115,
+    "ameriabank/deposit": 141,
+    "idbank/branch": 21,
+    "idbank/credit": 109,
+    "idbank/deposit": 30
+  },
+  "chunk_source_files": {
+    "acba_branch_chunks.jsonl": 114,
+    "acba_credit_chunks.jsonl": 181,
+    "acba_deposit_chunks.jsonl": 109,
+    "ameriabank_branch_chunks.jsonl": 7,
+    "ameriabank_credit_chunks.jsonl": 115,
+    "ameriabank_deposit_chunks.jsonl": 141,
+    "idbank_branch_chunks.jsonl": 21,
+    "idbank_credit_chunks.jsonl": 109,
+    "idbank_deposit_chunks.jsonl": 30
+  }
 }

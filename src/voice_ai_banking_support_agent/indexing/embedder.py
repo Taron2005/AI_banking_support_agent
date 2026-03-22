@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import os
+
+# Apply before sentence_transformers/transformers import (retriever imports this module early).
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+os.environ["TRANSFORMERS_NO_FLAX"] = "1"
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 import logging
 from dataclasses import dataclass
 from typing import Literal
@@ -8,6 +14,57 @@ from typing import Literal
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+ResolvedEmbedDevice = Literal["cpu", "cuda", "mps"]
+
+
+def resolve_embedding_device(mode: str | None) -> ResolvedEmbedDevice:
+    """
+    Pick a concrete torch device for SentenceTransformer.
+
+    - auto: CUDA if available, else Apple MPS if available, else CPU.
+    - If cuda/mps is requested but unavailable, falls back to CPU with a warning.
+    """
+
+    m = (mode or "auto").strip().lower()
+    if m not in ("auto", "cpu", "cuda", "mps"):
+        logger.warning("Unknown embedding_device %r; using cpu", mode)
+        m = "cpu"
+
+    chosen: ResolvedEmbedDevice
+    if m == "auto":
+        chosen = "cpu"
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                chosen = "cuda"
+            elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+                chosen = "mps"
+        except Exception:
+            logger.debug("Could not probe torch for embedding device auto-select", exc_info=True)
+    else:
+        chosen = m  # type: ignore[assignment]
+
+    if chosen == "cpu":
+        return "cpu"
+
+    try:
+        import torch
+    except ImportError:
+        logger.warning("PyTorch not installed; embedding_device=%s unavailable, using CPU.", chosen)
+        return "cpu"
+
+    if chosen == "cuda" and not torch.cuda.is_available():
+        logger.warning("embedding_device=cuda but CUDA is not available; using CPU.")
+        return "cpu"
+    if chosen == "mps" and (
+        not hasattr(torch.backends, "mps") or not torch.backends.mps.is_available()
+    ):
+        logger.warning("embedding_device=mps but MPS is not available; using CPU.")
+        return "cpu"
+
+    return chosen
 
 
 @dataclass(frozen=True)

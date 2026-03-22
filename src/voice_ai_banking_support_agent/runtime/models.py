@@ -77,4 +77,8 @@ class SessionState:
     last_entities_mentioned: list[str] = field(default_factory=list)
     recent_user_turns: list[str] = field(default_factory=list)
     recent_assistant_turns: list[str] = field(default_factory=list)
+    # After assistant asks "which bank?" / similar — holds the user's prior question until resolved.
+    pending_clarify: str | None = None  # "bank" | "multi_bank"
+    pending_query: str | None = None
+    pending_topic: TopicLabel | None = None
 

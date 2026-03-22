@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import os
+
+# Before any Hugging Face / Google libs: avoid TensorFlow (often breaks on Windows with newer protobuf)
+# and force pure-Python protobuf if TF or other stacks already mixed versions.
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+os.environ["TRANSFORMERS_NO_FLAX"] = "1"
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 import argparse
 
 import uvicorn

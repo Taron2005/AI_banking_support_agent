@@ -21,6 +21,7 @@ This repository delivers a **manifest-driven RAG pipeline** (scrape → clean �
 | **In scope** | Consumer-oriented **credits (loans)**, **deposits**, **branches / addresses / ATMs** for the configured banks, plus tight follow-ups when topic and bank context are already clear. |
 | **Out of scope** | Cards, FX, transfers, investment advice, “best bank” recommendations, and other non-product topics → refusal or clarification in Armenian. |
 | **Grounding** | Factual claims must follow **retrieved chunks**. The LLM is instructed not to use general world knowledge for rates, URLs, or branch facts; unknown URLs are stripped from model output. If Gemini is unavailable, **extractive fallback** still uses only evidence text. |
+| **Multi-turn** | Short follow-ups (e.g. only a **bank name** after “which bank?”) are merged with the **pending question** stored in session state; conversation snippets are passed into synthesis so clarifications stay on-topic. |
 | **Voice UX** | Replies are shaped for **spoken Armenian**: short sentences, no markdown headings or bullet lists in the LLM prompt path; source URLs are collected under **«Աղբյուրներ»** for traceability. |
 
 Optional **stricter orchestration** (e.g. require explicit bank name, refuse comparison without two banks in evidence) is configurable in `runtime_config.yaml` under `orchestration:` and is described in `docs/PROMPT_ARCHITECTURE.md`.
@@ -46,7 +47,7 @@ flowchart TD
   Q[User query text] --> N[Normalize + follow-up resolve]
   N --> T[TopicClassifier: credit / deposit / branch only]
   T -->|out of scope| R[Refusal]
-  T --> B[Bank detect + scope]
+  T --> B[Bank detect + scope + pending clarify merge]
   B --> RET[Retrieve FAISS + filters + rerank]
   RET --> E[Evidence pack + checks]
   E -->|weak evidence| R
@@ -101,6 +102,8 @@ sequenceDiagram
 
 **Why:** The corpus is bounded and versioned with the repo; **local** FAISS indexes avoid network dependency at query time and keep latency predictable for demos and evaluation.
 
+**Optional acceleration (config / env):** Ingest YAML (e.g. `validation_manifest_update_hy.yaml`) supports `embedding_device` (`auto` / `cpu` / `cuda` / `mps`), `embedding_batch_size`, and optional `faiss_use_gpu` for GPU-backed search when a GPU build of FAISS is installed. See `.env.example` for `EMBEDDING_DEVICE`, `EMBEDDING_BATCH_SIZE`, `FAISS_USE_GPU`. Index **build** time is dominated by **embedding** the chunks (CPU is slow on large models; GPU helps most there).
+
 ---
 
 ## Dataset and index (submission default)
@@ -146,6 +149,8 @@ The `[voice]` extra installs the LiveKit Python SDK for the agent. For the **ref
 ### Environment files
 
 Copy **`.env.example`** to **`.env`** and set at least **`GEMINI_API_KEY`**. For voice, align **`LIVEKIT_URL`**, **`LIVEKIT_API_KEY`**, **`LIVEKIT_API_SECRET`** with `docker/livekit.yaml` (defaults are `devkey` / `secret` for local Docker). Copy **`voice_config.example.yaml`** to **`voice_config.yaml`** (the latter is gitignored). Templates: `.env.backend.example`, `.env.voice.example`, `.env.frontend.example`, `llm_config.example.yaml`.
+
+Optional overrides in `.env`: **`EMBEDDING_MODEL_NAME`**, **`EMBEDDING_DEVICE`**, **`EMBEDDING_BATCH_SIZE`**, **`FAISS_USE_GPU`** / **`FAISS_GPU_ID`** (see comments in `.env.example`).
 
 **Security:** Do not commit `.env` or production `voice_config.yaml`. Default LiveKit keys are for **local development** only.
 
@@ -203,8 +208,12 @@ Only if you need a fresh ingest:
 
 ```bash
 python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml scrape --banks acba ameriabank idbank --topics credit deposit branch
-python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml build-index --index-name hy_model_index --banks acba ameriabank idbank --topics credit deposit branch
+python -m voice_ai_banking_support_agent.cli --project-root . --config validation_manifest_update_hy.yaml build-index --index-name hy_model_index --topics credit deposit branch
 ```
+
+Omitting **`--banks`** on `build-index` rebuilds the index from **all** `*_chunks.jsonl` files under the manifest’s `chunks_dir` (recommended after expanding `manifests/banks.yaml` so no bank is dropped). Run **`build-index` again** after any embedding model or dimension change so `embedding_dim` matches the index.
+
+**Windows note:** `run_runtime_api.py` and the API module set **`TRANSFORMERS_NO_TF=1`** and default **`PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`** before loading **sentence-transformers**, avoiding common **TensorFlow / protobuf** crashes on first `/chat`. Use `python run_runtime_api.py` as the entrypoint, or set the same variables before `uvicorn` if you start the app another way.
 
 ---
 
@@ -233,7 +242,7 @@ The `slow` suite (session-scoped client + full embedding load) is in `tests/test
 
 | Criterion | Evidence in repository |
 |-----------|-------------------------|
-| Accuracy and guardrails | `runtime/topic_classifier.py`, `runtime/orchestrator.py`, `runtime/refusal.py`, `runtime/answer_generator.py`; tests under `tests/test_runtime_*.py`, `tests/test_bank_scope.py` |
+| Accuracy and guardrails | `runtime/topic_classifier.py`, `runtime/orchestrator.py`, `runtime/refusal.py`, `runtime/answer_generator.py`, `runtime/rag_prompts.py`; tests under `tests/test_runtime_*.py`, `tests/test_bank_scope.py`, `tests/test_pending_clarify_flow.py` |
 | Voice experience | `voice/livekit_agent.py`, `voice/stt.py`, `voice/tts.py`, `frontend-react/src/App.jsx`; `tests/test_voice_*.py` |
 | Architecture and scalability | `manifests/banks.yaml`, `scrapers/`, `pipelines/`, `indexing/`, `runtime/`, `voice/`; `docker-compose.yml`, `docker/livekit.yaml` |
 | Documentation and reproducibility | This README, `DATASETS.md`, example configs (`*.example`, `runtime_config.example.yaml`) |

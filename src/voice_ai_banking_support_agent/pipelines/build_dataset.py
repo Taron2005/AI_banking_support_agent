@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..bank_manifest import load_banks_manifest, manifest_summary
-from ..config import AppConfig
+from ..config import DEFAULT_EMBEDDING_MODEL, AppConfig
 from ..extraction.branch_parser import parse_branch_records
 from ..extraction.cleaning import clean_html_to_text, detect_language_from_text
 from ..extraction.section_parser import parse_sections_from_html
@@ -369,7 +369,7 @@ def main(argv: list[str] | None = None) -> None:
         cleaned_docs_dir=project_root / "data" / "cleaned_docs",
         chunks_dir=project_root / "data" / "chunks",
         index_dir=project_root / "data" / "index",
-        embedding_model_name="Metric-AI/armenian-text-embeddings-2-large",
+        embedding_model_name=DEFAULT_EMBEDDING_MODEL,
     )
 
     if config_yaml:

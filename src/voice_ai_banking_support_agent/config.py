@@ -56,6 +56,12 @@ class AppConfig:
 
     language: Literal["hy"] = "hy"
     embedding_model_name: str = DEFAULT_EMBEDDING_MODEL
+    # auto | cpu | cuda | mps — passed to SentenceTransformer for build-index and runtime query embedding.
+    embedding_device: str = "auto"
+    embedding_batch_size: int = 32
+    # Optional GPU-backed FAISS for search (requires faiss-gpu / GPU build of FAISS). Index files stay CPU-compatible.
+    faiss_use_gpu: bool = False
+    faiss_gpu_id: int = 0
 
     chunking: ChunkingConfig = ChunkingConfig()
     network: NetworkConfig = NetworkConfig()
@@ -147,6 +153,14 @@ def load_config(project_root: Path, config_yaml: Path | None = None) -> AppConfi
     embedding_model = overrides.get("embedding_model_name") or os.getenv("EMBEDDING_MODEL_NAME")
     if embedding_model:
         overrides["embedding_model_name"] = embedding_model
+    if os.getenv("EMBEDDING_DEVICE"):
+        overrides["embedding_device"] = os.getenv("EMBEDDING_DEVICE", "auto").strip()
+    if os.getenv("EMBEDDING_BATCH_SIZE"):
+        overrides["embedding_batch_size"] = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+    if os.getenv("FAISS_USE_GPU", "").strip().lower() in ("1", "true", "yes"):
+        overrides["faiss_use_gpu"] = True
+    if os.getenv("FAISS_GPU_ID"):
+        overrides["faiss_gpu_id"] = int(os.getenv("FAISS_GPU_ID", "0"))
     if os.getenv("SCRAPER_TIMEOUT_SECONDS"):
         overrides.setdefault("network", {})
         overrides["network"]["timeout_seconds"] = float(os.getenv("SCRAPER_TIMEOUT_SECONDS", "30"))

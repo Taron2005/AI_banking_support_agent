@@ -60,6 +60,22 @@ class FollowUpResolver:
                     return True
         return False
 
+    def should_abort_pending_clarification(self, query: str) -> bool:
+        """
+        User sent a new standalone question while we were waiting for bank/scope clarification.
+        """
+
+        q = query.strip()
+        if not q:
+            return False
+        toks = q.split()
+        lower = q.lower()
+        if len(toks) >= 12:
+            return True
+        if len(toks) >= 5 and self._topic_terms_in_query(lower) and self._mentions_any_bank(lower):
+            return True
+        return False
+
     def _query_targets_different_topic_than_state(self, lower: str, last_topic: str) -> bool:
         """True when the user names another product line than the one carried in session (e.g. switches to loans)."""
 

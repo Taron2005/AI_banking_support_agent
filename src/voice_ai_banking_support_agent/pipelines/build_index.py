@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from ..config import AppConfig
-from ..indexing.embedder import EmbedderConfig, EmbeddingModel
+from ..indexing.embedder import EmbedderConfig, EmbeddingModel, resolve_embedding_device
 from ..indexing.vector_store import FaissVectorStore
 from ..models import DocumentMetadata, TopicLabel
 from ..utils.logging import setup_logging
@@ -129,9 +129,21 @@ def build_index(
                     want,
                 )
 
-    logger.info("Embedding %d chunk documents...", len(all_docs))
+    emb_device = resolve_embedding_device(config.embedding_device)
+    batch_size = max(1, int(config.embedding_batch_size))
+    logger.info(
+        "Embedding %d chunk documents (device=%s batch_size=%d model=%s)...",
+        len(all_docs),
+        emb_device,
+        batch_size,
+        config.embedding_model_name,
+    )
     embedder = EmbeddingModel(
-        EmbedderConfig(model_name=config.embedding_model_name, device="cpu", batch_size=32)
+        EmbedderConfig(
+            model_name=config.embedding_model_name,
+            device=emb_device,
+            batch_size=batch_size,
+        )
     )
     try:
         embeddings = embedder.embed_texts([d.cleaned_text for d in all_docs])

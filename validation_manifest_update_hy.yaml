@@ -6,5 +6,9 @@ chunks_dir: data_manifest_update_hy/chunks
 index_dir: data_manifest_update_hy/index
 reuse_raw_html: false
 embedding_model_name: Metric-AI/armenian-text-embeddings-2-large
+embedding_device: auto
+embedding_batch_size: 32
+faiss_use_gpu: false
+faiss_gpu_id: 0
 chunking:
   overlap_sentences: 2

@@ -8,7 +8,7 @@ from typing import ClassVar
 
 from ..config import AppConfig
 from ..indexing.bm25_index import ChunkBM25Index
-from ..indexing.embedder import EmbedderConfig, EmbeddingModel
+from ..indexing.embedder import EmbedderConfig, EmbeddingModel, resolve_embedding_device
 from ..indexing.vector_store import FaissVectorStore
 from ..models import TopicLabel
 from .bank_scope import should_diversify_across_banks
@@ -42,7 +42,7 @@ class RetrievalRequest:
 class RuntimeRetriever:
     """Retrieval wrapper used by runtime orchestration."""
 
-    _embedders: ClassVar[dict[str, EmbeddingModel]] = {}
+    _embedders: ClassVar[dict[tuple[str, str, int], EmbeddingModel]] = {}
     _bm25_indexes: ClassVar[dict[str, ChunkBM25Index]] = {}
 
     def __init__(self, config: AppConfig, retrieval: RetrievalSettings | None = None) -> None:
@@ -51,14 +51,16 @@ class RuntimeRetriever:
         self._validated_index_names: set[str] = set()
 
     def _embedder(self) -> EmbeddingModel:
-        key = self._config.embedding_model_name
+        device = resolve_embedding_device(self._config.embedding_device)
+        batch_size = max(1, int(self._config.embedding_batch_size))
+        key = (self._config.embedding_model_name, device, batch_size)
         cached = RuntimeRetriever._embedders.get(key)
         if cached is None:
             cached = EmbeddingModel(
                 EmbedderConfig(
-                    model_name=key,
-                    device="cpu",
-                    batch_size=32,
+                    model_name=self._config.embedding_model_name,
+                    device=device,
+                    batch_size=batch_size,
                     normalize=True,
                 )
             )
@@ -108,6 +110,8 @@ class RuntimeRetriever:
         return FaissVectorStore(
             index_path=index_dir / "faiss.index",
             metadata_path=index_dir / "metadata.jsonl",
+            use_gpu=self._config.faiss_use_gpu,
+            gpu_id=self._config.faiss_gpu_id,
         )
 
     def _bm25_for_index(self, index_name: str) -> ChunkBM25Index:

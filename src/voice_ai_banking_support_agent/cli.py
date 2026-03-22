@@ -9,7 +9,7 @@ from typing import Literal
 import numpy as np
 
 from .config import AppConfig
-from .indexing.embedder import EmbedderConfig, EmbeddingModel
+from .indexing.embedder import EmbedderConfig, EmbeddingModel, resolve_embedding_device
 from .indexing.vector_store import FaissVectorStore
 from .models import DocumentMetadata, TopicLabel
 from .pipelines.build_dataset import build_dataset
@@ -118,11 +118,12 @@ def main(argv: list[str] | None = None) -> None:
         if args.topic:
             topic_filter = args.topic.lower()  # validated by DocumentMetadata during build; retriever filter uses it
 
+        emb_dev = resolve_embedding_device(cfg.embedding_device)
         embedder = EmbeddingModel(
             EmbedderConfig(
                 model_name=cfg.embedding_model_name,
-                device="cpu",
-                batch_size=32,
+                device=emb_dev,
+                batch_size=max(1, int(cfg.embedding_batch_size)),
                 normalize=True,
             )
         )

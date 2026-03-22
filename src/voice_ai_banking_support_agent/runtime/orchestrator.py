@@ -18,7 +18,7 @@ from .bank_scope import query_implies_all_banks, query_implies_comparison
 from .evidence_checker import EvidenceChecker
 from .evidence_select import dedupe_urls
 from .followup_resolver import FollowUpResolver
-from .models import RuntimeResponse, SessionState
+from .models import RuntimeResponse, SessionState, TopicClassification
 from .query_normalizer import normalize_query
 from .orchestration_policy import dominant_bank_key_from_chunks, supported_bank_keys_csv
 from .rag_prompts import REFUSAL_RULES
@@ -28,6 +28,8 @@ from .runtime_config import OrchestrationSettings
 from .topic_classifier import TopicClassifier
 
 logger = logging.getLogger(__name__)
+
+_TOPIC_LABELS = frozenset({"credit", "deposit", "branch"})
 
 _OTHER_BANK_RX = re.compile(
     r"(?:\b(?:the\s+)?other\s+banks?\b|"
@@ -110,6 +112,41 @@ class RuntimeRequest:
 class RuntimeOrchestrator:
     """Main text-runtime orchestration pipeline."""
 
+    @staticmethod
+    def _clear_pending_clarification(state: SessionState) -> None:
+        state.pending_clarify = None
+        state.pending_query = None
+        state.pending_topic = None
+
+    def _consume_pending_clarification(
+        self, normalized: str, state: SessionState
+    ) -> tuple[str, TopicLabel | None]:
+        """
+        If we were waiting for bank/scope after a clarify message, merge the user's reply
+        with the stored question. Returns (query_for_pipeline, forced_topic_or_none).
+        """
+
+        if not state.pending_clarify or not state.pending_query:
+            return normalized, None
+        if self._followup_resolver.should_abort_pending_clarification(normalized):
+            self._clear_pending_clarification(state)
+            return normalized, None
+        lower = normalized.lower()
+        if state.pending_clarify in ("bank", "multi_bank"):
+            if query_implies_all_banks(lower):
+                pq = state.pending_query
+                ft = state.pending_topic
+                merged = f"{pq} {normalized}".strip()
+                self._clear_pending_clarification(state)
+                return merged, ft
+            detected = self._bank_detector.detect_all(normalized)
+            if len(detected) >= 1:
+                merged = f"{state.pending_query} {normalized}".strip()
+                ft = state.pending_topic
+                self._clear_pending_clarification(state)
+                return merged, ft
+        return normalized, None
+
     def __init__(
         self,
         *,
@@ -139,7 +176,10 @@ class RuntimeOrchestrator:
         trace: list[str] = []
         normalized = normalize_query(req.query)
         trace.append(f"normalized={normalized}")
-        followup = self._followup_resolver.resolve(normalized, state)
+        working_query, forced_topic_from_pending = self._consume_pending_clarification(normalized, state)
+        if working_query != normalized:
+            trace.append(f"pending_clarify_merged={working_query[:200]!r}")
+        followup = self._followup_resolver.resolve(working_query, state)
         effective_query = followup.resolved_query
         trace.append(f"followup.used={followup.used_followup_context} merged={','.join(followup.merged_fields)}")
         if followup.needs_clarification:
@@ -147,7 +187,7 @@ class RuntimeOrchestrator:
                 "Խնդրում եմ նախորդ հարցից հետո կրկնել հարցը ավելի կոնկրետ՝ նշելով բանկը և թեման "
                 "(վարկ, ավանդ կամ մասնաճյուղ)։"
             )
-            self._update_state(state, normalized, "", None, None)
+            self._update_state(state, normalized, hint, None, None)
             return RuntimeResponse(
                 answer_text=hint,
                 status="clarify",
@@ -156,6 +196,18 @@ class RuntimeOrchestrator:
                 decision_trace=trace if req.verbose else [],
             )
         topic = self._topic_classifier.classify(effective_query)
+        if (
+            forced_topic_from_pending
+            and forced_topic_from_pending in _TOPIC_LABELS
+            and topic.label == "ambiguous"
+        ):
+            topic = TopicClassification(
+                label=forced_topic_from_pending,  # type: ignore[arg-type]
+                confidence=0.9,
+                reason="carried_from_pending_bank_clarify",
+                matched_terms=[],
+            )
+            trace.append(f"topic_overridden_from_pending={topic.label}")
         trace.append(f"topic={topic.label} conf={topic.confidence:.2f} reason={topic.reason}")
 
         if topic.label in ("out_of_scope", "unsupported_request_type", "ambiguous"):
@@ -164,6 +216,7 @@ class RuntimeOrchestrator:
                 if topic.label == "unsupported_request_type"
                 else ("ambiguous" if topic.label == "ambiguous" else "out_of_scope")
             )
+            self._clear_pending_clarification(state)
             self._update_state(state, normalized, "", None, None)
             return RuntimeResponse(
                 answer_text=refusal_message(reason),
@@ -193,9 +246,13 @@ class RuntimeOrchestrator:
                 and not query_implies_comparison(low_q)
             ):
                 csv = supported_bank_keys_csv(self._bank_aliases)
-                self._update_state(state, normalized, "", None, None)
+                clarify_text = bank_clarification_message(csv)
+                state.pending_clarify = "bank"
+                state.pending_query = effective_query
+                state.pending_topic = topic.label
+                self._update_state(state, normalized, clarify_text, None, topic.label)
                 return RuntimeResponse(
-                    answer_text=bank_clarification_message(csv),
+                    answer_text=clarify_text,
                     status="clarify",
                     refusal_reason=None,
                     detected_topic=topic.label,
@@ -222,12 +279,16 @@ class RuntimeOrchestrator:
                 and len(distinct_retrieval_banks) >= 2
             ):
                 csv = supported_bank_keys_csv(self._bank_aliases)
-                self._update_state(state, normalized, "", None, None)
+                clarify_text = REFUSAL_RULES["clarify_multi_bank"].format(banks=csv)
+                state.pending_clarify = "multi_bank"
+                state.pending_query = effective_query
+                state.pending_topic = topic.label
+                self._update_state(state, normalized, clarify_text, None, topic.label)
                 return RuntimeResponse(
-                    answer_text=REFUSAL_RULES["clarify_multi_bank"].format(banks=csv),
+                    answer_text=clarify_text,
                     status="clarify",
                     refusal_reason=None,
-                    detected_topic=runtime_topic,
+                    detected_topic=topic.label,
                     decision_trace=trace + ["clarify=unscoped_multi_bank_evidence"] if req.verbose else [],
                 )
         if self._orchestration.restrict_evidence_to_single_bank_without_comparison:
@@ -245,6 +306,7 @@ class RuntimeOrchestrator:
         evidence = self._evidence_checker.assess(effective_query, runtime_topic, retrieved)
         trace.append(f"evidence.sufficient={evidence.sufficient} reason={evidence.reason} max_score={evidence.max_score:.3f}")
         if not evidence.sufficient:
+            self._clear_pending_clarification(state)
             self._update_state(state, normalized, "", bank_keys, runtime_topic)  # keep context
             det_one, det_list = _response_bank_fields(bank_keys)
             return RuntimeResponse(
@@ -262,6 +324,7 @@ class RuntimeOrchestrator:
             if query_implies_comparison(low_q):
                 dpost = _distinct_bank_keys_in_retrieval(retrieved)
                 if len(dpost) < 2:
+                    self._clear_pending_clarification(state)
                     self._update_state(state, normalized, "", bank_keys, runtime_topic)
                     det_one, det_list = _response_bank_fields(bank_keys)
                     trace.append("refuse=comparison_insufficient_banks_in_evidence")
@@ -277,10 +340,15 @@ class RuntimeOrchestrator:
                     )
 
         ctx_parts: list[str] = []
-        for prev_u in state.recent_user_turns[-3:]:
-            ctx_parts.append(f"Նախորդ հարց՝ {prev_u[:300]}")
-        for prev_a in state.recent_assistant_turns[-2:]:
-            ctx_parts.append(f"Նախորդ AI պատասխան (կրճատ)՝ {prev_a[:380]}")
+        if followup.used_followup_context or working_query != normalized:
+            ctx_parts.append(
+                "Նշում․ օգտատիրոջ վերջին հաղորդագրությունը կարող է լինել կարճ (օր. միայն բանկի անուն)՝ "
+                "լրացնելով նախորդ հարցը․ պատասխանի համակցված նշանակությունը, ոչ թե միայն կարճ տողը։"
+            )
+        for prev_u in state.recent_user_turns[-5:]:
+            ctx_parts.append(f"Նախորդ հարց՝ {prev_u[:360]}")
+        for prev_a in state.recent_assistant_turns[-4:]:
+            ctx_parts.append(f"Նախորդ AI պատասխան (կրճատ)՝ {prev_a[:420]}")
         conv_context = "\n".join(ctx_parts) if ctx_parts else None
 
         prepared = prepare_evidence_for_answer(retrieved, max_chunks=self._max_evidence_chunks)
@@ -316,6 +384,7 @@ class RuntimeOrchestrator:
             )
             ar = AnswerResult(text=text_only, answer_synthesis="extractive_only", llm_error=None)
 
+        self._clear_pending_clarification(state)
         self._update_state(state, normalized, ar.text, bank_keys, runtime_topic)
         det_one, det_list = _response_bank_fields(bank_keys)
         return RuntimeResponse(

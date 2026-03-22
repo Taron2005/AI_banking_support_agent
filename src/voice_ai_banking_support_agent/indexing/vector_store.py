@@ -33,9 +33,18 @@ class FaissVectorStore:
     hybrid/BM25 later without changing the index format.
     """
 
-    def __init__(self, *, index_path: Path, metadata_path: Path) -> None:
+    def __init__(
+        self,
+        *,
+        index_path: Path,
+        metadata_path: Path,
+        use_gpu: bool = False,
+        gpu_id: int = 0,
+    ) -> None:
         self._index_path = index_path
         self._metadata_path = metadata_path
+        self._use_gpu = bool(use_gpu)
+        self._gpu_id = int(gpu_id)
 
         self._index = None
         self._metadata: list[DocumentMetadata] | None = None
@@ -51,7 +60,20 @@ class FaissVectorStore:
             return self._index
         faiss = self._faiss()
         logger.info("Loading FAISS index: %s", self._index_path)
-        self._index = faiss.read_index(str(self._index_path))
+        cpu_index = faiss.read_index(str(self._index_path))
+        if self._use_gpu:
+            try:
+                res = faiss.StandardGpuResources()
+                self._index = faiss.index_cpu_to_gpu(res, self._gpu_id, cpu_index)
+                logger.info("FAISS search using GPU (gpu_id=%s)", self._gpu_id)
+            except Exception as exc:
+                logger.warning(
+                    "faiss_use_gpu=true but GPU index init failed (%s); using CPU search.",
+                    exc,
+                )
+                self._index = cpu_index
+        else:
+            self._index = cpu_index
         return self._index
 
     def _load_metadata(self) -> list[DocumentMetadata]:
