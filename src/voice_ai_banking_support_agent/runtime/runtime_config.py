@@ -28,7 +28,9 @@ class FollowUpSettings(BaseModel):
 class EvidenceSettings(BaseModel):
     min_chunks: int = 1
     min_top_score: float = 0.15
-    branch_address_patterns: list[str] = Field(default_factory=lambda: ["հասցե", "address", "street", "փողոց"])
+    branch_address_patterns: list[str] = Field(
+        default_factory=lambda: ["հասցե", "address", "street", "փողոց", "ք.", "շենք", "պող.", "հՀ,"]
+    )
 
 
 class AnswerSettings(BaseModel):

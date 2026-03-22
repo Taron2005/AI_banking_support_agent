@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Iterator, Literal, Protocol
 
 from .evidence_pack import strip_navigation_lines
-from .evidence_select import dedupe_urls, normalize_http_url, query_term_overlap
+from .evidence_select import dedupe_urls, filter_chunks_to_bank_keys, normalize_http_url, query_term_overlap
 from .models import RetrievedChunk
 from .prompts import LLM_USER_ANSWER_INSTRUCTIONS, STANDARD_AI_FOOTNOTE_LINE
 from .rag_prompts import answer_mode_supplement
@@ -41,29 +41,6 @@ _LEAKY_LINE_MARKERS = (
     "no outside knowledge",
     "only use facts",
 )
-
-
-def _chunk_in_bank_allowlist(c: RetrievedChunk, bank_keys: frozenset[str] | None) -> bool:
-    if not bank_keys:
-        return True
-    ck = (c.chunk.bank_key or "").strip().lower()
-    bn = (c.chunk.bank_name or "").strip().lower()
-    for raw in bank_keys:
-        want = raw.strip().lower()
-        if not want:
-            continue
-        if want == ck or want == bn:
-            return True
-    return False
-
-
-def _filter_chunks_for_bank_keys(
-    chunks: list[RetrievedChunk],
-    bank_keys: frozenset[str] | None,
-) -> list[RetrievedChunk]:
-    if not bank_keys:
-        return list(chunks)
-    return [c for c in chunks if _chunk_in_bank_allowlist(c, bank_keys)]
 
 
 def _line_looks_leaky(line: str) -> bool:
@@ -436,7 +413,7 @@ class LLMAnswerGenerator:
                 llm_error="no_evidence_chunks",
             )
 
-        scoped = _filter_chunks_for_bank_keys(chunks, bank_keys)
+        scoped = filter_chunks_to_bank_keys(chunks, bank_keys)
         base_n = self._cfg.max_evidence_chunks
         base_lim = self._cfg.max_chars_per_evidence
         # Shrink plans when the provider rejects oversized prompts (HTTP 413, etc.).
@@ -616,7 +593,7 @@ class LLMAnswerGenerator:
             )
             return
 
-        scoped = _filter_chunks_for_bank_keys(chunks, bank_keys)
+        scoped = filter_chunks_to_bank_keys(chunks, bank_keys)
         base_n = self._cfg.max_evidence_chunks
         base_lim = self._cfg.max_chars_per_evidence
         shrink_plans: list[tuple[int, int, str | None]] = [

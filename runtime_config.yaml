@@ -33,6 +33,11 @@ evidence:
     - "address"
     - "street"
     - "փողոց"
+    # Common on Armenian bank sites without the word «հասցե»
+    - "ք."
+    - "շենք"
+    - "պող."
+    - "հՀ,"
 
 answer:
   backend: "llm"
@@ -78,11 +83,13 @@ bank_aliases:
     - "իդբանկ"
     - "այդի բանկ"
 
-# Balanced mode: allow retrieval when the bank is implied or only in Armenian script; strict eval can re-enable gates.
-# - require_explicit_bank: if true, unnamed single-bank questions → clarify before RAG (hurts hy-only bank names if detection misses).
-# - clarify_when_unscoped_multi_bank_evidence: ask which bank when hits span 2+ banks but query does not scope (stricter).
+# Production-oriented gates (see docs/PROMPT_ARCHITECTURE.md).
+# - restrict_evidence_to_single_bank_without_comparison: unnamed, non-compare queries → keep one bank’s chunks (dominant).
+# - clarify_when_unscoped_multi_bank_evidence: retrieval spans 2+ banks but query is unscoped → clarify.
+# - refuse_comparison_without_multi_bank_evidence: explicit compare wording needs ≥2 banks in evidence.
+# - require_explicit_bank: if true, unnamed product questions → clarify first (can be strict for eval).
 orchestration:
   require_explicit_bank: false
-  restrict_evidence_to_single_bank_without_comparison: false
-  clarify_when_unscoped_multi_bank_evidence: false
-  refuse_comparison_without_multi_bank_evidence: false
+  restrict_evidence_to_single_bank_without_comparison: true
+  clarify_when_unscoped_multi_bank_evidence: true
+  refuse_comparison_without_multi_bank_evidence: true

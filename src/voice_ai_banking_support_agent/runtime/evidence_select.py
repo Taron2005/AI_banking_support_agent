@@ -104,6 +104,36 @@ def _bank_key_chunk(c: RetrievedChunk) -> str:
     return raw or "_unknown"
 
 
+def chunk_matches_bank_keys(c: RetrievedChunk, bank_keys: frozenset[str]) -> bool:
+    """True if chunk metadata matches any slug in ``bank_keys`` (bank_key or bank_name)."""
+
+    bk = (c.chunk.bank_key or "").strip().lower()
+    bn = (c.chunk.bank_name or "").strip().lower()
+    for raw in bank_keys:
+        want = raw.strip().lower()
+        if not want:
+            continue
+        if want == bk or want == bn:
+            return True
+    return False
+
+
+def filter_chunks_to_bank_keys(
+    chunks: list[RetrievedChunk],
+    bank_keys: frozenset[str] | None,
+) -> list[RetrievedChunk]:
+    """
+    Hard post-filter when the query scope names specific banks (OR semantics).
+
+    Keeps the vector-store contract honest if a retriever returns stray rows; drops chunks
+    with unknown bank metadata when ``bank_keys`` is non-empty.
+    """
+
+    if not bank_keys:
+        return list(chunks)
+    return [c for c in chunks if chunk_matches_bank_keys(c, bank_keys)]
+
+
 def _chunk_identity(c: RetrievedChunk) -> str:
     cid = (c.chunk.chunk_id or "").strip()
     return cid if cid else f"__noid:{id(c)}"

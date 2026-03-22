@@ -5,6 +5,25 @@ from dataclasses import dataclass
 from .models import EvidenceDecision, RetrievedChunk
 
 
+def _chunk_looks_like_branch_address_listing(text: str) -> bool:
+    low = (text or "").lower()
+    if "մասնաճյուղ" not in low:
+        return False
+    return any(
+        sig in low
+        for sig in (
+            "ք.",
+            "շենք",
+            "պող.",
+            "փող.",
+            "հՀ,",
+            "տարածք",
+            "+374",
+            "հեռախոս",
+        )
+    )
+
+
 @dataclass(frozen=True)
 class EvidenceConfig:
     min_chunks: int = 1
@@ -46,6 +65,11 @@ class EvidenceChecker:
             has_address_signal = any(
                 any(p in c.chunk.cleaned_text.lower() for p in self._cfg.branch_address_patterns) for c in chunks
             )
+            if not has_address_signal:
+                # Armenian branch pages often list «ք. Երևան», «պող.», «շենք» without the word «հասցե».
+                has_address_signal = any(
+                    _chunk_looks_like_branch_address_listing(c.chunk.cleaned_text) for c in chunks
+                )
             if not has_address_signal:
                 return EvidenceDecision(
                     sufficient=False,

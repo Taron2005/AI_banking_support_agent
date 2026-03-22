@@ -17,9 +17,10 @@ from .evidence_pack import prepare_evidence_for_answer
 from .bank_detector import BankDetector, BankMatch
 from .bank_scope import query_implies_all_banks, query_implies_comparison
 from .evidence_checker import EvidenceChecker
-from .evidence_select import dedupe_urls
+from .evidence_select import dedupe_urls, filter_chunks_to_bank_keys
 from .followup_resolver import FollowUpResolver
 from .models import RuntimeResponse, SessionState, TopicClassification
+from .query_answer_hints import extra_llm_context, retrieval_query_with_topic_boost
 from .query_normalizer import normalize_query, repair_stt_transcript
 from .orchestration_policy import dominant_bank_key_from_chunks, supported_bank_keys_csv
 from .rag_prompts import REFUSAL_RULES
@@ -285,9 +286,14 @@ class RuntimeOrchestrator:
                 )
 
         runtime_topic = topic.label
+        retrieval_query = retrieval_query_with_topic_boost(
+            effective_query, runtime_topic=str(runtime_topic)
+        )
+        if retrieval_query != effective_query:
+            trace.append(f"retrieval_query_boost={retrieval_query[:120]!r}")
         retrieved = self._retriever.retrieve(
             RetrievalRequest(
-                query=effective_query,
+                query=retrieval_query,
                 index_name=req.index_name,
                 top_k=req.top_k or self._default_top_k,
                 topic=runtime_topic,  # type: ignore[arg-type]
@@ -295,6 +301,11 @@ class RuntimeOrchestrator:
             )
         )
         trace.append(f"retrieved_count={len(retrieved)}")
+        if bank_keys:
+            before_scope = len(retrieved)
+            retrieved = filter_chunks_to_bank_keys(retrieved, bank_keys)
+            if before_scope != len(retrieved):
+                trace.append(f"post_filter_bank_scope dropped={before_scope - len(retrieved)}")
         distinct_retrieval_banks = _distinct_bank_keys_in_retrieval(retrieved)
         if self._orchestration.clarify_when_unscoped_multi_bank_evidence:
             if (
@@ -366,6 +377,9 @@ class RuntimeOrchestrator:
 
         ctx_parts: list[str] = []
         low_eff = effective_query.lower()
+        hint = extra_llm_context(effective_query, runtime_topic=str(runtime_topic))
+        if hint:
+            ctx_parts.append(hint)
         detail_markers = (
             "մանրամասն",
             "ավելի",
@@ -395,6 +409,7 @@ class RuntimeOrchestrator:
         prepared = prepare_evidence_for_answer(retrieved, max_chunks=self._max_evidence_chunks)
         if not prepared:
             prepared = retrieved[: self._max_evidence_chunks]
+        prepared = filter_chunks_to_bank_keys(prepared, bank_keys)
 
         if query_implies_comparison(low_q):
             answer_mode: AnswerMode = "comparison"
@@ -434,7 +449,11 @@ class RuntimeOrchestrator:
             detected_bank=det_one,
             detected_banks=det_list,
             used_sources=dedupe_urls(
-                [c.chunk.source_url for c in pre.retrieved if getattr(c.chunk, "source_url", None)],
+                [
+                    c.chunk.source_url
+                    for c in filter_chunks_to_bank_keys(pre.prepared, pre.bank_keys)
+                    if getattr(c.chunk, "source_url", None)
+                ],
                 max_n=8,
             ),
             retrieved_chunks_summary=[

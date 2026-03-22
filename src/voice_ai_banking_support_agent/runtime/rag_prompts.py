@@ -110,7 +110,9 @@ Non-negotiable:
   «Վերնագիր» lines are OK. Numbered steps are OK only when the user clearly asks how something works and the evidence supports steps.
 - Do not dump raw menus, breadcrumbs, or navigation chrome from the excerpts.
 - Never mix banks: do not attribute one bank's figures to another. Follow the mode block in the user prompt (single / multi / compare).
-- URLs: only those that appear in evidence, only under the heading «Աղբյուրներ», one per line, plain text. No URLs in the body before that section.
+- Deposits: never treat different product families as one ranking (e.g. fixed-term vs on-demand/demand, children/youth vs standard, different currencies or terms). Compare only like-for-like when evidence allows; otherwise state what is missing per bank/product line (currency, term, min amount) and avoid a single “winner”.
+- Credits: if the user names one product (e.g. car loan / auto loan / ավտովարկ / mortgage / հիփոթեք) and the excerpts do not contain that product, answer only that the excerpt set does not cover it — do not substitute rates or limits from other loan types.
+- URLs: only those that appear in evidence, only under the heading «Աղբյուրներ», one per line, plain text. No URLs in the body before that section. Do not list a URL under «Աղբյուրներ» unless that page’s evidence supports at least one factual sentence in your answer for this turn.
 - Follow the Armenian structure and footnote line in the user template exactly.
 """.strip()
 
@@ -152,8 +154,10 @@ COMPARISON_PROMPT = """
 Համեմատության ռեժիմ.
 - Յուրաքանչյուր բանկի համար առանձին բաժին՝ մանրամասն, միայն այդ բանկի ապացույցից․ քանի դեռ ապացույցը հարստ է, մի սահմանափակիր քեզ քիչ նախադասություններով։
 - Չմիավորես, չմիջարկես և չխառնես տոկոսադրույքներն ու պայմանները բանկերի միջև։
+- Ավանդների դեպքում․ մի համեմատիր տարբեր արտադրանքային տեսակները որպես մեկ աղյուսակ (օր. ժամկետային/ֆիքսված ժամկետի ավանդը՝ ընթացիկ/պահանջվող հաշվի դիմաց). Նույն ընտանիքի արտադրանքներ միայն (օր. ժամկետային՝ ժամկետային, պահանջվող՝ պահանջվող, մանկական՝ մանկական)․ նշիր արժույթը, ժամկետը, նվազագույն գումարը, եթե կան ապացույցում։ Եթե մի բանկի համար համապատասխան տիպի տվյալ չկա՝ ասա բացակայում է, մի փոխարինիր մյուս բանկի այլ տիպի տոկոսով։
 - Եթե որևէ բանկի համար ապացույցը բավարար չէ՝ նշիր դա միայն այդ բանկի համար, առանց գուշակելու։
-- Ընդհանուր եզրակացություն («ամենալավը», «ընտրիր սա») մի ասա, եթե ապացույցում չկա հստակ հիմք։
+- Ընդհանուր եզրակացություն («ամենալավը», «ընտրիր սա») մի ասա, եթե ապացույցում չկա հստակ հիմք կամ համեմատելի նույն տիպի արտադրանք։
+- «Աղբյուրներ»․ միայն այն URL-ները, որոնց հատվածներից ուղղակի օգտագործել ես այս պատասխանում (այլ բանկի կամ չօգտագործված էջ մի ավելացնիր)։
 """.strip()
 
 # Back-compat alias
@@ -176,6 +180,7 @@ MULTI_BANK_NON_COMPARE_PROMPT = """
 SINGLE_BANK_PROMPT = """
 Ռեժիմ՝ մեկ բանկ․
 Պատասխանի միայն ընտրված բանկի ապացույցներից։ Եթե ապացույցում երևում են այլ բանկեր, դրանք չներառես պատասխանի մեջ։
+«Աղբյուրներ»․ միայն այն հղումները, որոնք վերաբերում են այդ մի բանկին և որոնց տեքստը օգտագործել ես (մրցակից բանկի URL մի ցուցադրիր)։
 """.strip()
 
 # ---------------------------------------------------------------------------
