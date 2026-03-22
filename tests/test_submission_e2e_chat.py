@@ -127,11 +127,15 @@ def test_qa_follow_up_same_session(chat_client: TestClient) -> None:
 def test_qa_general_deposit_no_bank_named(chat_client: TestClient) -> None:
     """General question should not be silently scoped to one bank."""
     out = _chat(chat_client, "qa-gen-dep-1", "Ինչ ավանդային տարբերակներ կան բանկերում")
-    assert out["status"] in ("answered", "refused")
+    # With orchestration.require_explicit_bank, a generic in-scope question may return clarify
+    # until the user names a bank or asks for all banks — not a silent single-bank answer.
+    assert out["status"] in ("answered", "refused", "clarify")
     assert out["answer_text"]
     if out["status"] == "answered":
         assert out.get("detected_bank") in (None, "")
         assert not out.get("detected_banks")
+    if out["status"] == "clarify":
+        assert len(out["answer_text"]) > 10
 
 
 def test_qa_two_named_banks_returns_detected_banks(chat_client: TestClient) -> None:

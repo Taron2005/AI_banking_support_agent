@@ -5,10 +5,13 @@ description = "Offline ingestion + indexing pipeline for an Armenian voice AI ba
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "grpcio==1.70.0",
+  "grpcio-status==1.70.0",
+  "cryptography>=44.0.2,<46",
   "requests>=2.32.0",
   "beautifulsoup4>=4.12.3",
   "lxml>=5.2.2",
-  "pydantic>=2.10.0",
+  "pydantic>=2.10.6,<2.13",
   "pydantic-settings>=2.6.1",
   "pyyaml>=6.0.2",
   "tenacity>=9.0.0",
@@ -31,7 +34,7 @@ build-backend = "setuptools.build_meta"
 [project.optional-dependencies]
 playwright = ["playwright>=1.45.0"]
 voice = [
-  "livekit>=0.11.0",
+  "livekit>=1.1.0,<2",
 ]
 dev = [
   "pytest>=8.3.0",

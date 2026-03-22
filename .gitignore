@@ -42,6 +42,8 @@ data_manifest_update_multi/
 data_validation/
 data_ameriabank_fix/
 
+# Scraped HTML cache (reproducible via `scrape`; chunks + index are enough for eval)
+data_manifest_update_hy/raw_html/
+
 # Optional: uncomment if the repo is too large for GitHub (use Git LFS or release assets)
-# data/raw_html/
 # data/index/**/*.index

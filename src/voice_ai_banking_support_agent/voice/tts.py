@@ -78,7 +78,11 @@ class HTTPTTSProvider:
     fallback_provider: TTSProvider | None = None
 
     def synthesize(self, text: str) -> TTSOutput:
-        headers: dict[str, str] = {"Content-Type": "application/json; charset=utf-8"}
+        stripped = (text or "").strip()
+        if not stripped:
+            return TTSOutput(audio=_silent_wav_bytes(duration_s=0.2), encoding=self.output_encoding)
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
         if self.api_key:
             key = self.api_key.strip()
             h = self.api_key_header.strip()
@@ -93,7 +97,7 @@ class HTTPTTSProvider:
             return v if isinstance(v, str) else str(v)
 
         payload = {
-            "text": _s(text, ""),
+            "text": _s(stripped, ""),
             "language": _s(self.language, "hy-AM"),
             "voice": _s(self.voice_name, "default"),
             "format": _s(self.output_encoding, "wav"),

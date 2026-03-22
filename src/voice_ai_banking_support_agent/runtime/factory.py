@@ -26,6 +26,8 @@ def build_runtime_orchestrator(
             ambiguous_margin=runtime_settings.topic_classifier.ambiguous_margin,
             strong_term_weight=runtime_settings.topic_classifier.strong_term_weight,
             weak_term_weight=runtime_settings.topic_classifier.weak_term_weight,
+            fuzzy_match=runtime_settings.topic_classifier.fuzzy_match,
+            fuzzy_ratio=runtime_settings.topic_classifier.fuzzy_ratio,
         )
     )
     bank_detector = BankDetector(aliases=runtime_settings.bank_aliases)

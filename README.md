@@ -76,6 +76,16 @@ sequenceDiagram
   AG->>LK: assistant audio + voice.transcript.final
 ```
 
+**Streaming LLM path (default for voice):** After STT, the agent calls `RuntimeOrchestrator.stream_handle` instead of blocking `handle`. **Gemini** is invoked with **`generate_content(..., stream=True)`**; token chunks are published on LiveKit topic **`assistant.text.delta`** (UTF-8 JSON `{"text":"…"}`) so the React UI can show the **Armenian answer as it is generated**. When the stream finishes, the same **URL scrubbing, footnote, and evidence rules** as the non-streaming path are applied once, then **`assistant.text`** carries the final payload (with `streamed: true`) and **TTS** runs on that scrubbed text (sentence-chunked as before). Early exits (refusal, clarify, extractive-only backend) still emit a **single** `assistant.text` with no deltas. Disable streaming with `stream_llm_tokens: false` under `behavior:` in `voice_config.yaml`.
+
+**Latency-oriented agent behavior:** STT, RAG (`RuntimeOrchestrator`), and TTS run in a **thread pool** via `asyncio.to_thread` so the LiveKit asyncio loop stays responsive. Assistant replies are **split on sentence boundaries** (including Armenian **։**) into **mostly one sentence per TTS HTTP call**, then played **back-to-back** on the assistant track so **time-to-first-audio** improves on longer answers (more TTS round trips total, but earlier start of speech).
+
+**Frontend live feedback:** After **Connect voice**, the UI shows a **live mic level meter** while you hold **Mic**, plus **optional browser SpeechRecognition** (`hy-AM`) for **interim/final on-screen captions**. That preview is for confidence only; the **authoritative** user text for RAG is still produced by your configured **HTTP STT** after **Stop & send**.
+
+**Local STT server:** `scripts/voice_http_stt_server.py` uses **faster-whisper** with **`vad_filter=True`** and **`beam_size=1`** by default for a better speed/latency tradeoff on CPU demos (still Armenian via `language=hy`).
+
+**Local TTS server:** `scripts/voice_http_tts_server.py` uses **edge-tts** (Microsoft). In some regions, **Armenian `hy-AM-*` voices are not offered** by the Edge catalog (`NoAudioReceived`). The server **retries with multilingual English voices** that still accept Armenian Unicode text (accented but functional). Optional: `EDGE_TTS_FALLBACK_VOICES` or `--fallback-voices`.
+
 **LiveKit:** Docker image `livekit/livekit-server`, signaling URL such as `ws://127.0.0.1:7880`. JWTs for browser and agent: `GET /api/livekit/token?identity=...` from this API, or offline token generation via `scripts/generate_livekit_token.py`.
 
 **UTF-8:** JSON, HTML, STT/TTS payloads, and LiveKit data-channel messages are handled as UTF-8 so Armenian text is preserved end-to-end.
@@ -114,7 +124,7 @@ sequenceDiagram
 | Data root | `data_manifest_update_hy/` |
 | Index name | `hy_model_index` |
 
-Details: `DATASETS.md`. A prebuilt index is included so evaluators can run the stack **without** a long scrape/embed pass unless they choose to rebuild.
+Details: `DATASETS.md`. A prebuilt index (and chunk JSONL) is included so evaluators can run the stack **without** a long scrape/embed pass unless they choose to rebuild. **Raw scraped HTML** under `data_manifest_update_hy/raw_html/` is **not** committed (`.gitignore`); run **`scrape`** locally if you need to regenerate cleaned docs and chunks from source pages.
 
 ---
 
@@ -184,6 +194,8 @@ python -m voice_ai_banking_support_agent.cli --project-root . --config validatio
   --voice-config voice_config.yaml
 ```
 
+**Voice agent → runtime:** By default the agent calls the same logic as **`POST /chat`** over HTTP (`VOICE_RUNTIME_API_URL`, e.g. `http://127.0.0.1:8000`). For **in-process** orchestration (no HTTP hop; required for **`stream_llm_tokens`** token streaming without duplicating the HTTP streaming contract), set **`VOICE_RUNTIME_HTTP=0`** — see `.env.example` and `voice_config.example.yaml`.
+
 ### Verification endpoints
 
 - `GET /health` — process up  
@@ -214,6 +226,8 @@ python -m voice_ai_banking_support_agent.cli --project-root . --config validatio
 Omitting **`--banks`** on `build-index` rebuilds the index from **all** `*_chunks.jsonl` files under the manifest’s `chunks_dir` (recommended after expanding `manifests/banks.yaml` so no bank is dropped). Run **`build-index` again** after any embedding model or dimension change so `embedding_dim` matches the index.
 
 **Windows note:** `run_runtime_api.py` and the API module set **`TRANSFORMERS_NO_TF=1`** and default **`PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`** before loading **sentence-transformers**, avoiding common **TensorFlow / protobuf** crashes on first `/chat`. Use `python run_runtime_api.py` as the entrypoint, or set the same variables before `uvicorn` if you start the app another way.
+
+If **`ImportError: cygrpc`** (gRPC) or **`pydantic_core._pydantic_core`** / **`cryptography` DLL** errors appear after `pip install -U`, reinstall pinned stacks: **`pip install -r requirements.txt`** then **`pip install -e ".[voice,voice_local_servers]"`** (see top of `requirements.txt` for `grpcio` / `cryptography` / `pydantic` pins). **LiveKit Docker** image is pinned in `docker-compose.yml` (`livekit/livekit-server:v1.9.4`); run **`docker compose pull`** after pulling this repo.
 
 ---
 
@@ -256,7 +270,6 @@ The `slow` suite (session-scoped client + full embedding load) is in `tests/test
 | `DATASETS.md` | Dataset layout and index naming |
 | `ARCHITECTURE.md`, `RUNTIME_ARCHITECTURE.md`, `LIVEKIT_INTEGRATION_ARCHITECTURE.md` | Deeper design notes |
 | `docs/PROMPT_ARCHITECTURE.md` | RAG prompt modules and strict orchestration flags |
-| `docs/archive/` | Optional historical notes |
 
 ---
 

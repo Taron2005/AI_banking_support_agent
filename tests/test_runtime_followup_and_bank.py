@@ -21,6 +21,19 @@ def test_bank_detector_detect_all_single_when_one_named() -> None:
     assert [m.bank_key for m in det.detect_all("միայն Ամերիաբանկի վարկ")] == ["ameriabank"]
 
 
+def test_bank_detector_armenian_spaced_ameria_bank() -> None:
+    det = BankDetector()
+    q = "ինչ ավանդներ կան Ամերիա բանկում այս տարի"
+    assert [m.bank_key for m in det.detect_all(q)] == ["ameriabank"]
+
+
+def test_bank_detector_uppercase_armenian_ameriabank() -> None:
+    det = BankDetector()
+    m = det.detect("ՎԱՐԿԵՐ ԱՄԵՐԻԱԲԱՆԿՈՒՄ")
+    assert m is not None
+    assert m.bank_key == "ameriabank"
+
+
 def test_followup_resolver_uses_last_context() -> None:
     resolver = FollowUpResolver()
     state = SessionState(session_id="s1", last_topic="deposit", last_bank="ameriabank")

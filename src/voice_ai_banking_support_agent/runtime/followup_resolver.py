@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import unicodedata
+
 from .bank_scope import query_implies_all_banks
+from .lexical_fuzzy import fuzzy_term_matches
 from .models import FollowUpResolution, SessionState
 
 
@@ -54,11 +57,40 @@ class FollowUpResolver:
         return any(h in lower for h in hints)
 
     def _mentions_any_bank(self, lower: str) -> bool:
+        folded = unicodedata.normalize("NFC", lower).casefold()
         for aliases in self._bank_aliases.values():
             for alias in aliases:
-                if len(alias) >= 2 and alias.lower() in lower:
+                al = unicodedata.normalize("NFC", (alias or "").strip()).casefold()
+                if len(al) < 2:
+                    continue
+                if al in folded or fuzzy_term_matches(folded, al, ratio=0.78):
                     return True
         return False
+
+    def _wants_more_detail(self, lower: str) -> bool:
+        """User asks for depth / continuation (should merge with session, not treat as new tiny query)."""
+        hints = (
+            "մանրամասն",
+            "մանրամասնորեն",
+            "ավելի մանրամասն",
+            "լայնածավալ",
+            "ամբողջությամբ",
+            "բացատրիր",
+            "բացատրեք",
+            "շարունակիր",
+            "ինչպես",
+            "ինչու",
+            "քայլ առ քայլ",
+            "more detail",
+            "more details",
+            "explain",
+            "elaborate",
+            "in full",
+            "go deeper",
+            "tell me more",
+            "what about",
+        )
+        return any(h in lower for h in hints)
 
     def should_abort_pending_clarification(self, query: str) -> bool:
         """
@@ -115,9 +147,14 @@ class FollowUpResolver:
                 "այնպես",
                 "հետո",
                 "նախորդ",
+                "նույնը",
+                "դա",
+                "այն",
             )
         )
         is_followup = is_followup_marker or (is_short and has_reference_hint)
+        if (state.last_topic or state.last_bank) and self._wants_more_detail(lower):
+            is_followup = True
 
         # Short bank pivot: "Ameriabank" / "ամերիա" after a prior topic turn.
         if (
@@ -133,7 +170,9 @@ class FollowUpResolver:
             return FollowUpResolution(resolved_query=q)
 
         if is_followup and not (state.last_topic or state.last_bank):
-            return FollowUpResolution(resolved_query=q, needs_clarification=True)
+            # No prior turn to attach to: answer this text as a standalone query. Otherwise
+            # short/noisy STT (or pronouns like «այդ») hits the same generic clarify reply every time.
+            return FollowUpResolution(resolved_query=q)
 
         merged_fields: list[str] = []
         prefix_parts: list[str] = []

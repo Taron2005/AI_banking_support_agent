@@ -2,35 +2,29 @@
 
 ## Scope
 
-This repository implements the offline knowledge layer for an Armenian banking assistant:
-- source control via manifest
-- scraping + extraction
-- chunking + embeddings
-- local retrieval index
+This repository is the full **Armenian banking voice + text assistant** stack: manifest-driven **ingestion** (scrape → clean → chunk → FAISS), **runtime RAG** (FastAPI `POST /chat`, topic/bank gating, Gemini or extractive fallback), and **voice** (LiveKit agent, HTTP STT/TTS). The **canonical high-level overview** is [README.md](README.md); this file summarizes module layout and the **offline data path** under `data_manifest_update_hy/` (configured in `validation_manifest_update_hy.yaml`).
 
-It intentionally excludes online answer generation and voice orchestration.
-
-## Data Flow
+## Data flow (ingestion)
 
 1. `manifests/banks.yaml` defines allowed URLs by bank/topic.
-2. `build_dataset` fetches pages and stores raw HTML in `data/raw_html/`.
-3. Cleaning + section parsing creates page-level artifacts in `data/cleaned_docs/`.
-4. Branch pages additionally produce structured records in `data/branches/`.
-5. Section-aware chunking writes chunk JSONL files in `data/chunks/`.
-6. `build_index` embeds chunk text and writes FAISS + metadata in `data/index/<index_name>/`.
-7. `demo-retrieve` embeds queries and searches FAISS with optional topic/bank filters.
+2. **Scrape** fetches pages and stores raw HTML in `data_manifest_update_hy/raw_html/` (local cache; not committed).
+3. Cleaning + section parsing creates artifacts in `data_manifest_update_hy/cleaned_docs/`.
+4. Branch pages additionally produce structured records in `data_manifest_update_hy/branches/`.
+5. Section-aware chunking writes chunk JSONL files in `data_manifest_update_hy/chunks/`.
+6. **Build index** embeds chunk text and writes FAISS + metadata in `data_manifest_update_hy/index/<index_name>/`.
+7. At query time, **retrieve** embeds the user query and searches FAISS with topic/bank filters (see `runtime/` and `indexing/`).
 
-## Core Modules
+## Core modules (by area)
 
-- `config.py`: centralized runtime and path configuration.
-- `bank_manifest.py`: strict manifest schema and URL validation.
-- `scrapers/base.py`: HTTP fetcher with retries/session reuse and structured extraction helpers.
-- `scrapers/*.py`: bank-specific extraction rules and `fetch_structured()` logic (including Ameriabank DNN module API payload extraction for JS-loaded pages).
-- `extraction/*`: cleaning, section parsing, branch extraction.
-- `indexing/*`: chunking, embedding, vector search.
-- `pipelines/*`: orchestration for dataset, index build, URL discovery.
+- **Config & manifest:** `config.py`, `bank_manifest.py`, YAML manifests under repo root and `manifests/`.
+- **Scraping:** `scrapers/base.py`, `scrapers/*.py` — bank-specific extraction and `fetch_structured()`.
+- **Extraction:** `extraction/*` — cleaning, section parsing, branch extraction.
+- **Indexing:** `indexing/*` — chunking, embedding, vector search.
+- **Pipelines:** `pipelines/*` — dataset build, index build, URL discovery.
+- **Runtime API & RAG:** `runtime/*`, `run_runtime_api.py` — orchestration, LLM, prompts, refusals.
+- **Voice:** `voice/*` — LiveKit agent, STT/TTS clients, optional in-process vs HTTP runtime (see `RUNTIME_ARCHITECTURE.md`, `LIVEKIT_INTEGRATION_ARCHITECTURE.md`).
 
-## Reliability and Failure Handling
+## Reliability and failure handling
 
 - Per-page failures are logged and do not stop the run.
 - Dataset run ends with failure ratio reporting and fails if too many pages break.
@@ -39,10 +33,4 @@ It intentionally excludes online answer generation and voice orchestration.
 
 ## Extensibility
 
-To add a new bank:
-1. add manifest entry with topic URLs,
-2. add scraper file with extraction rules + `fetch_structured()`,
-3. register scraper in `build_dataset.py`,
-4. add bank-focused tests.
-
-No pipeline rewrite is required.
+To add a new bank: extend `manifests/banks.yaml`, add a scraper with extraction rules, register it in the dataset pipeline, and re-run scrape + build-index. No fork of core retrieval or orchestration is required.

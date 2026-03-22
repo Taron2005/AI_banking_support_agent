@@ -1,7 +1,9 @@
 topic_classifier:
-  ambiguous_margin: 0.12
+  ambiguous_margin: 0.1
   strong_term_weight: 1.5
   weak_term_weight: 0.75
+  fuzzy_match: true
+  fuzzy_ratio: 0.78
 
 followup:
   short_query_max_tokens: 12
@@ -25,7 +27,7 @@ followup:
 evidence:
   min_chunks: 1
   # Hybrid dense+BM25 scores are often compressed; keep threshold moderate so good hits are not refused before LLM.
-  min_top_score: 0.12
+  min_top_score: 0.1
   branch_address_patterns:
     - "հասցե"
     - "address"
@@ -34,9 +36,9 @@ evidence:
 
 answer:
   backend: "llm"
-  max_evidence_chunks: 5
-  max_snippet_chars: 600
-  max_chars_per_evidence: 900
+  max_evidence_chunks: 10
+  max_snippet_chars: 1200
+  max_chars_per_evidence: 2000
   llm_model_name: null
 
 retrieval:
@@ -53,17 +55,34 @@ retrieval:
   cross_encoder_top_n: 24
 
 bank_aliases:
-  ameriabank: ["ameriabank", "ameria", "ամերիա", "ամերիաբանկ"]
-  acba: ["acba", "acba bank", "ակբա"]
-  idbank: ["idbank", "id bank", "այդիբանկ", "իդբանկ"]
+  # Armenian variants + spacing/STT: compact matching merges spaces for aliases ≥5 chars.
+  ameriabank:
+    - "ameriabank"
+    - "ameria bank"
+    - "ameria"
+    - "ամերիա"
+    - "ամերիաբանկ"
+    - "ամերիա բանկ"
+    - "ամերիայի"
+    - "ամերիաբանկի"
+    - "ամերիաբանկում"
+  acba:
+    - "acba"
+    - "acba bank"
+    - "ակբա"
+    - "ակբա բանկ"
+  idbank:
+    - "idbank"
+    - "id bank"
+    - "այդիբանկ"
+    - "իդբանկ"
+    - "այդի բանկ"
 
-# Strict evaluation mode (optional):
-# - require_explicit_bank: generic product questions must name a bank or "all banks" / comparison.
-# - restrict_evidence_to_single_bank_without_comparison: collapse hits to one bank when unscoped.
-# - clarify_when_unscoped_multi_bank_evidence: if retrieval spans 2+ banks but query is unscoped, ask which bank.
-# - refuse_comparison_without_multi_bank_evidence: comparison queries need chunks from 2+ banks.
+# Balanced mode: allow retrieval when the bank is implied or only in Armenian script; strict eval can re-enable gates.
+# - require_explicit_bank: if true, unnamed single-bank questions → clarify before RAG (hurts hy-only bank names if detection misses).
+# - clarify_when_unscoped_multi_bank_evidence: ask which bank when hits span 2+ banks but query does not scope (stricter).
 orchestration:
-  require_explicit_bank: true
+  require_explicit_bank: false
   restrict_evidence_to_single_bank_without_comparison: false
   clarify_when_unscoped_multi_bank_evidence: false
   refuse_comparison_without_multi_bank_evidence: false

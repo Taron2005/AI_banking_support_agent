@@ -28,7 +28,8 @@ class STTSettings(BaseModel):
     response_text_field: str = "text"
     multipart_field: str = "file"
     upload_filename: str = "audio.wav"
-    fallback_to_mock: bool = True
+    # When an HTTP endpoint is set, factory.py does not use mock STT fallback.
+    fallback_to_mock: bool = False
 
 
 class TTSSettings(BaseModel):
@@ -48,7 +49,13 @@ class TTSSettings(BaseModel):
 class VoiceBehaviorSettings(BaseModel):
     debug: bool = False
     verbose_trace: bool = False
-    max_response_chars: int = 4000
+    max_response_chars: int = 16000
+    # Gemini token streaming over LiveKit data channel + TTS on final scrubbed answer.
+    stream_llm_tokens: bool = True
+    # When true, voice turns call FastAPI POST /chat (same session_id as the web UI) — shared SessionState.
+    route_through_runtime_api: bool = True
+    runtime_api_url: str = "http://127.0.0.1:8000"
+    runtime_api_timeout_seconds: float = 180.0
 
 
 class VoiceConfig(BaseModel):
@@ -132,5 +139,17 @@ def load_voice_config(path: str | Path | None = None) -> VoiceConfig:
     if force_mock:
         cfg.stt.provider = "mock"
         cfg.tts.provider = "mock"
+    http_rt = (os.getenv("VOICE_RUNTIME_HTTP") or "").strip().lower()
+    if http_rt in ("0", "false", "no", "off"):
+        cfg.behavior.route_through_runtime_api = False
+    api_u = (os.getenv("VOICE_RUNTIME_API_URL") or "").strip()
+    if api_u:
+        cfg.behavior.runtime_api_url = api_u.rstrip("/")
+    api_to = (os.getenv("VOICE_RUNTIME_API_TIMEOUT_SECONDS") or "").strip()
+    if api_to:
+        try:
+            cfg.behavior.runtime_api_timeout_seconds = float(api_to)
+        except ValueError:
+            pass
     return cfg
 

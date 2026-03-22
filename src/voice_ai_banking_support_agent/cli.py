@@ -95,6 +95,12 @@ def _load_config(args: argparse.Namespace) -> AppConfig:
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     setup_logging(args.log_level)
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(args.project_root).resolve() / ".env", override=False)
+    except ImportError:
+        pass
     cfg = _load_config(args)
 
     topics: list[TopicLabel] = [t.lower() for t in getattr(args, "topics", [])]  # type: ignore[list-item]
@@ -169,7 +175,7 @@ def main(argv: list[str] | None = None) -> None:
                 obj = json.loads(line)
                 if obj.get("chunk_id") == target_id:
                     doc = DocumentMetadata.model_validate(obj)
-                    print(doc.model_dump_json(ensure_ascii=False, indent=2))
+                    print(json.dumps(doc.model_dump(mode="json"), ensure_ascii=False, indent=2))
                     return
         print(f"chunk_id not found: {target_id}")
         return

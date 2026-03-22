@@ -26,6 +26,8 @@ def build_voice_dependencies(voice_config: VoiceConfig) -> VoiceDependencies:
 
     stt_ep = (voice_config.stt.endpoint or "").strip()
     if voice_config.stt.provider == "http_whisper" and stt_ep:
+        # Never fall back to mock when an HTTP endpoint is configured: mock text poisons the LLM
+        # and repeats the same failure mode; operators should see the real STT error instead.
         stt: STTProvider = HTTPWhisperSTTProvider(
             endpoint=stt_ep,
             language=voice_config.stt.language,
@@ -35,7 +37,7 @@ def build_voice_dependencies(voice_config: VoiceConfig) -> VoiceDependencies:
             response_text_field=voice_config.stt.response_text_field,
             multipart_field=voice_config.stt.multipart_field,
             upload_filename=voice_config.stt.upload_filename,
-            fallback_provider=mock_stt if voice_config.stt.fallback_to_mock else None,
+            fallback_provider=None,
         )
     elif voice_config.stt.provider == "http_whisper":
         logger.warning(

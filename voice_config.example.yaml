@@ -27,7 +27,8 @@ stt:
   api_key: null
   api_key_header: "Authorization"
   response_text_field: "text"
-  fallback_to_mock: true
+  # Ignored when stt.endpoint / VOICE_STT_ENDPOINT is set: HTTP STT errors surface instead of mock text.
+  fallback_to_mock: false
 
 tts:
   provider: "http_tts"
@@ -47,4 +48,11 @@ tts:
 behavior:
   debug: false
   verbose_trace: false
-  max_response_chars: 4000
+  max_response_chars: 16000
+  # Voice uses FastAPI POST /chat by default (same session_id as React) — start run_runtime_api.py first.
+  # VOICE_RUNTIME_HTTP=0 uses in-process orchestrator + stream_llm_tokens below.
+  route_through_runtime_api: true
+  runtime_api_url: "http://127.0.0.1:8000"
+  runtime_api_timeout_seconds: 180
+  # Gemini token streaming (assistant.text.delta) only when route_through_runtime_api: false.
+  stream_llm_tokens: true

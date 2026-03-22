@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import logging
 import time
 from dataclasses import dataclass
@@ -121,21 +122,24 @@ class HTTPWhisperSTTProvider:
                 headers[h] = key
 
         lang = normalize_whisper_language(payload.language or self.language)
-        files = {
-            self.multipart_field: (
-                self.upload_filename,
-                payload.content,
-                "audio/wav",
-            ),
-        }
+        raw_audio = bytes(payload.content)
         data = {"language": lang}
         # (connect_timeout, read_timeout): local Whisper often needs >45s on CPU / cold model load.
         read_to = float(self.timeout_seconds)
         connect_to = min(20.0, max(5.0, read_to * 0.15))
         timeout = (connect_to, read_to)
-        delays = (0.6, 2.0, 5.0)
+        delays = (0.6, 2.0, 5.0, 8.0)
         last_exc: Exception | None = None
         for attempt in range(len(delays) + 1):
+            # New buffer each attempt — requests consumes the stream; retries must not send empty bodies.
+            audio_buf = io.BytesIO(raw_audio)
+            files = {
+                self.multipart_field: (
+                    self.upload_filename,
+                    audio_buf,
+                    "audio/wav",
+                ),
+            }
             try:
                 resp = requests.post(
                     self.endpoint,
@@ -156,6 +160,7 @@ class HTTPWhisperSTTProvider:
                 body = resp.json()
                 text = _extract_transcript(body, self.response_text_field)
                 if not text:
+                    # Server may return 200 with empty text while still busy; retry once like gateway timeouts.
                     raise RuntimeError("STT returned empty transcript")
                 return text
             except (requests.Timeout, requests.ConnectionError) as exc:
@@ -166,7 +171,13 @@ class HTTPWhisperSTTProvider:
             except requests.HTTPError as exc:
                 last_exc = exc
                 code = exc.response.status_code if exc.response is not None else None
-                if code in (502, 503, 504) and attempt < len(delays):
+                if code in (502, 503, 504, 524) and attempt < len(delays):
+                    time.sleep(delays[attempt])
+                    continue
+                break
+            except RuntimeError as exc:
+                last_exc = exc
+                if "empty transcript" in str(exc).lower() and attempt < len(delays):
                     time.sleep(delays[attempt])
                     continue
                 break
@@ -191,6 +202,6 @@ class HTTPWhisperSTTProvider:
             logger.info("STT: falling back to secondary provider.")
             return self.fallback_provider.transcribe(payload)
         raise RuntimeError(
-            "STT transcription failed and no fallback is configured. "
-            "Set VOICE_STT_ENDPOINT or enable fallback_to_mock in voice config."
+            "STT transcription failed. Check VOICE_STT_ENDPOINT, local voice_http_stt_server logs, "
+            "and mic audio (speak clearly; avoid empty buffers after PTT)."
         ) from exc

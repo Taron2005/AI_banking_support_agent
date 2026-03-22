@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Iterator, Literal, Protocol
 
 from .evidence_pack import strip_navigation_lines
 from .evidence_select import dedupe_urls, normalize_http_url, query_term_overlap
@@ -101,6 +101,14 @@ class AnswerResult:
     text: str
     answer_synthesis: AnswerSynthesis
     llm_error: str | None = None
+
+
+@dataclass(frozen=True)
+class LlmStreamPiece:
+    """One step of streamed LLM synthesis: token delta and/or terminal ``AnswerResult``."""
+
+    delta: str | None = None
+    result: AnswerResult | None = None
 
 
 class AnswerBackend(Protocol):
@@ -387,7 +395,8 @@ class LLMAnswerGenerator:
             bank_line = "Բանկի ֆիլտր՝ բոլորը (ըստ հարցման)։"
         if multi_bank_evidence:
             bank_line += (
-                " Ապացույցում կան մի քանի բանկ․ պատասխանում ներկայացրու յուրաքանչյուրը կարճ, առանձին նախադասություններով։"
+                " Ապացույցում կան մի քանի բանկ․ ներկայացրու յուրաքանչյուրին առանձին բաժնով՝ "
+                "մանրամասն, քանի դեռ հիմնվում ես միայն այդ բանկի ապացույցի վրա։"
             )
         ctx_block = f"Զրույցի կոնտեքստ (նախորդ հարցումներ, կարճ)\n{context}\n\n" if context else ""
         mode_block = _answer_mode_instructions(answer_mode)
@@ -435,7 +444,7 @@ class LLMAnswerGenerator:
             (base_n, base_lim, context),
             (min(3, base_n), min(480, base_lim), context),
             (2, min(380, base_lim), context),
-            (2, 300, _truncate_context_block(context, 520)),
+            (2, 300, _truncate_context_block(context, 1400)),
             (2, 260, None),
         ]
         seen: set[tuple[int, int, str | None]] = set()
@@ -492,7 +501,7 @@ class LLMAnswerGenerator:
                 )
             if isinstance(out, str) and out.strip():
                 candidate = _tidy_whitespace(out.strip())
-                if len(candidate) < 12:
+                if len(candidate) < 8:
                     logger.warning("LLM returned very short text; extractive fallback.")
                     return AnswerResult(
                         text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
@@ -535,6 +544,216 @@ class LLMAnswerGenerator:
             text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
             answer_synthesis="extractive_fallback",
             llm_error="llm_empty_response",
+        )
+
+    def _finalize_streamed_llm_candidate(
+        self,
+        raw: str,
+        *,
+        used_for_prompt: list[RetrievedChunk],
+        chunks: list[RetrievedChunk],
+        query: str,
+        topic: str,
+        bank_keys: frozenset[str] | None,
+        context: str | None,
+    ) -> AnswerResult:
+        candidate = _tidy_whitespace(raw.strip())
+        if len(candidate) < 8:
+            logger.warning("LLM stream returned very short text; extractive fallback.")
+            return AnswerResult(
+                text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                answer_synthesis="extractive_fallback",
+                llm_error="llm_output_too_short",
+            )
+        low = candidate.lower()
+        if "ignore previous" in low or "system prompt" in low:
+            logger.warning("LLM stream output rejected (prompt-injection echo); extractive fallback.")
+            return AnswerResult(
+                text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                answer_synthesis="extractive_fallback",
+                llm_error="llm_output_rejected_policy_echo",
+            )
+        allowed = _allowed_urls(used_for_prompt)
+        candidate = _scrub_disallowed_markdown_links(candidate, allowed)
+        candidate = _scrub_unknown_urls(candidate, allowed)
+        candidate = _strip_leaked_meta_lines(candidate)
+        candidate = _tidy_whitespace(candidate)
+        candidate = _append_ai_footnote_if_missing(candidate)
+        candidate = _tidy_whitespace(candidate)
+        return AnswerResult(text=candidate, answer_synthesis="llm", llm_error=None)
+
+    def generate_answer_result_stream(
+        self,
+        query: str,
+        topic: str,
+        chunks: list[RetrievedChunk],
+        bank_keys: frozenset[str] | None,
+        *,
+        context: str | None = None,
+        answer_mode: AnswerMode = "single_bank",
+    ) -> Iterator[LlmStreamPiece]:
+        """
+        Stream raw token deltas from the LLM, then yield a single terminal ``AnswerResult``
+        (same post-processing as the non-streaming path).
+        """
+
+        if self._llm_client is None:
+            yield LlmStreamPiece(
+                result=AnswerResult(
+                    text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                    answer_synthesis="extractive_fallback",
+                    llm_error="llm_client_not_configured",
+                )
+            )
+            return
+        if not chunks:
+            yield LlmStreamPiece(
+                result=AnswerResult(
+                    text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                    answer_synthesis="extractive_fallback",
+                    llm_error="no_evidence_chunks",
+                )
+            )
+            return
+
+        scoped = _filter_chunks_for_bank_keys(chunks, bank_keys)
+        base_n = self._cfg.max_evidence_chunks
+        base_lim = self._cfg.max_chars_per_evidence
+        shrink_plans: list[tuple[int, int, str | None]] = [
+            (base_n, base_lim, context),
+            (min(3, base_n), min(480, base_lim), context),
+            (2, min(380, base_lim), context),
+            (2, 300, _truncate_context_block(context, 1400)),
+            (2, 260, None),
+        ]
+        seen: set[tuple[int, int, str | None]] = set()
+        deduped: list[tuple[int, int, str | None]] = []
+        for n, lim, ctx in shrink_plans:
+            key = (n, lim, ctx)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append((n, lim, ctx))
+
+        fn = getattr(self._llm_client, "generate")
+        stream_fn = getattr(self._llm_client, "generate_stream", None)
+        last_413: Exception | None = None
+        for plan_idx, (max_n, lim, ctx_use) in enumerate(deduped):
+            built = self._build_llm_prompt(
+                query,
+                topic,
+                scoped,
+                bank_keys,
+                context=ctx_use,
+                max_n=max_n,
+                max_chars=lim,
+                answer_mode=answer_mode,
+            )
+            if built is None:
+                if plan_idx == 0:
+                    logger.warning("After filtering, no evidence blocks left for LLM; extractive fallback.")
+                    yield LlmStreamPiece(
+                        result=AnswerResult(
+                            text=self._fallback.generate(query, topic, scoped, bank_keys, context=context),
+                            answer_synthesis="extractive_fallback",
+                            llm_error="evidence_filtered_empty",
+                        )
+                    )
+                    return
+                continue
+            prompt, used_for_prompt = built
+            try:
+                if stream_fn is None:
+                    out = fn(prompt)
+                    if isinstance(out, str) and out.strip():
+                        yield LlmStreamPiece(
+                            result=self._finalize_streamed_llm_candidate(
+                                out,
+                                used_for_prompt=used_for_prompt,
+                                chunks=chunks,
+                                query=query,
+                                topic=topic,
+                                bank_keys=bank_keys,
+                                context=context,
+                            )
+                        )
+                    else:
+                        yield LlmStreamPiece(
+                            result=AnswerResult(
+                                text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                                answer_synthesis="extractive_fallback",
+                                llm_error="llm_empty_response",
+                            )
+                        )
+                    return
+
+                acc: list[str] = []
+                for delta in stream_fn(prompt):
+                    if delta:
+                        acc.append(delta)
+                        yield LlmStreamPiece(delta=delta)
+                full = "".join(acc)
+                if not full.strip():
+                    logger.warning("LLM stream returned no text; extractive fallback.")
+                    yield LlmStreamPiece(
+                        result=AnswerResult(
+                            text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                            answer_synthesis="extractive_fallback",
+                            llm_error="llm_empty_response",
+                        )
+                    )
+                    return
+                yield LlmStreamPiece(
+                    result=self._finalize_streamed_llm_candidate(
+                        full,
+                        used_for_prompt=used_for_prompt,
+                        chunks=chunks,
+                        query=query,
+                        topic=topic,
+                        bank_keys=bank_keys,
+                        context=context,
+                    )
+                )
+                return
+            except Exception as exc:
+                if _is_payload_too_large(exc) and plan_idx < len(deduped) - 1:
+                    last_413 = exc
+                    logger.warning(
+                        "LLM stream payload too large; retrying with smaller evidence "
+                        "(chunks_cap=%s chars/chunk=%s context=%s)",
+                        max_n,
+                        lim,
+                        "trimmed" if ctx_use and ctx_use != context else ("off" if not ctx_use else "full"),
+                    )
+                    continue
+                err = _normalize_llm_error(exc)
+                logger.exception("Gemini/LLM stream failed; using extractive fallback (%s)", err)
+                yield LlmStreamPiece(
+                    result=AnswerResult(
+                        text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                        answer_synthesis="extractive_fallback",
+                        llm_error=err,
+                    )
+                )
+                return
+
+        if last_413 is not None:
+            err = _normalize_llm_error(last_413)
+            logger.error("LLM stream still rejected prompt size after shrinking; extractive fallback.")
+            yield LlmStreamPiece(
+                result=AnswerResult(
+                    text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                    answer_synthesis="extractive_fallback",
+                    llm_error=err,
+                )
+            )
+            return
+        yield LlmStreamPiece(
+            result=AnswerResult(
+                text=self._fallback.generate(query, topic, chunks, bank_keys, context=context),
+                answer_synthesis="extractive_fallback",
+                llm_error="llm_empty_response",
+            )
         )
 
     def generate(

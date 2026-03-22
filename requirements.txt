@@ -1,7 +1,13 @@
+# --- Stack pins (esp. Windows): avoid broken grpc cygrpc, cryptography DLL, skewed grpcio-status ---
+grpcio==1.70.0
+grpcio-status==1.70.0
+cryptography>=44.0.2,<46
+# pydantic-core must ship a matching wheel; narrow upper bound reduces bad resolution on pip upgrades
+pydantic>=2.10.6,<2.13
+
 requests>=2.32.0
 beautifulsoup4>=4.12.3
 lxml>=5.2.2
-pydantic>=2.10.0
 pydantic-settings>=2.6.1
 pyyaml>=6.0.2
 tenacity>=9.0.0
@@ -15,4 +21,3 @@ uvicorn[standard]>=0.30.0
 python-dotenv>=1.0.0
 livekit-api>=0.8.0
 google-generativeai>=0.8.0
-

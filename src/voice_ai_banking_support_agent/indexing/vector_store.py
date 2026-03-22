@@ -131,7 +131,8 @@ class FaissVectorStore:
 
         with tmp_metadata_path.open("w", encoding="utf-8") as f:
             for d in docs:
-                f.write(d.model_dump_json(ensure_ascii=False) + "\n")
+                # Pydantic v2 ``model_dump_json`` does not accept ``ensure_ascii``; keep Armenian UTF-8 unescaped.
+                f.write(json.dumps(d.model_dump(mode="json"), ensure_ascii=False) + "\n")
         tmp_index_path.replace(index_path)
         tmp_metadata_path.replace(metadata_path)
 

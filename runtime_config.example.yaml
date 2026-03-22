@@ -47,9 +47,17 @@ retrieval:
   cross_encoder_top_n: 24
 
 bank_aliases:
-  ameriabank: ["ameriabank", "ameria", "ամերիա", "ամերիաբանկ"]
-  acba: ["acba", "acba bank", "ակբա"]
-  idbank: ["idbank", "id bank", "այդիբանկ", "իդբանկ"]
+  ameriabank:
+    - "ameriabank"
+    - "ameria bank"
+    - "ameria"
+    - "ամերիա"
+    - "ամերիաբանկ"
+    - "ամերիա բանկ"
+    - "ամերիայի"
+    - "ամերիաբանկի"
+  acba: ["acba", "acba bank", "ակբա", "ակբա բանկ"]
+  idbank: ["idbank", "id bank", "այդիբանկ", "իդբանկ", "այդի բանկ"]
 
 orchestration:
   require_explicit_bank: false

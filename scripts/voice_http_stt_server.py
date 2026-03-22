@@ -12,10 +12,18 @@ Run (from repo root, after deps):
 
 Then in .env:
   VOICE_STT_ENDPOINT=http://127.0.0.1:8088/transcribe
+
+VAD uses onnxruntime (Silero). If Windows reports DLL load errors for onnxruntime, use
+  python scripts/voice_http_stt_server.py --vad-filter off
+or reinstall a cp310 wheel and keep protobuf<6 for Gemini/grpc:
+  pip install "protobuf>=5.26.1,<6"
+  pip install --no-deps --force-reinstall "onnxruntime==1.23.2"
 """
 import argparse
+import asyncio
 import io
 import logging
+import threading
 import wave
 
 import numpy as np
@@ -50,6 +58,14 @@ def _wav_bytes_to_float32_mono_16k(raw: bytes) -> np.ndarray:
     return audio
 
 
+def _onnxruntime_usable() -> bool:
+    try:
+        import onnxruntime  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--host", default="127.0.0.1")
@@ -57,20 +73,83 @@ def main() -> None:
     p.add_argument("--model", default="small", help="faster-whisper model: tiny, base, small, medium, large-v3, ...")
     p.add_argument("--device", default="cpu", help="cpu or cuda")
     p.add_argument("--compute-type", default="int8", dest="compute_type")
+    p.add_argument(
+        "--vad-filter",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="Silero VAD inside faster-whisper: needs onnxruntime. 'auto' enables VAD only if onnxruntime loads.",
+    )
     args = p.parse_args()
+
+    if args.vad_filter == "on":
+        vad_filter = True
+    elif args.vad_filter == "off":
+        vad_filter = False
+    else:
+        vad_filter = _onnxruntime_usable()
+        if not vad_filter:
+            logger.warning(
+                "onnxruntime not usable; transcribe will use vad_filter=False. "
+                "Fix ONNX (see docstring) or pass --vad-filter on after repairing it."
+            )
 
     try:
         from faster_whisper import WhisperModel
     except ImportError as e:
         raise SystemExit(
-            "Install: pip install faster-whisper\n"
-            "Optional GPU: pip install faster-whisper and use --device cuda --compute-type float16"
+            "faster-whisper (or a native dependency) failed to import.\n"
+            f"  Caused by: {e!r}\n"
+            "Typical fixes:\n"
+            "  pip install -e \".[voice_local_servers]\"\n"
+            "If you use Python 3.10 but see cp312 (or wrong ABI) in .venv errors, reinstall native wheels, e.g.:\n"
+            "  pip install --force-reinstall --no-cache-dir ctranslate2 onnxruntime av\n"
+            "On Windows, PyAV DLL errors often clear with: pip install \"av>=11,<14\"\n"
+            "If onnxruntime DLL fails only when transcribing, run with: --vad-filter off\n"
+            "GPU: --device cuda --compute-type float16 (needs CUDA-enabled ctranslate2).\n"
         ) from e
 
     import uvicorn
 
-    logger.info("Loading Whisper model=%s device=%s …", args.model, args.device)
+    logger.info(
+        "Loading Whisper model=%s device=%s vad_filter=%s …",
+        args.model,
+        args.device,
+        vad_filter,
+    )
     model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
+    # Blocking Whisper in the asyncio event loop starves other requests (2nd PTT turn timeouts / empty STT).
+    _transcribe_lock = threading.Lock()
+    # Nudges hy model toward domain vocabulary (helps word errors + empty VAD cuts).
+    _HY_BANKING_HINT = (
+        "Հարց վարկերի, ավանդների, մասնաճյուղերի մասին։ "
+        "Ամերիաբանկ, ԱԿԲԱ բանկ, ԻԴԲանկ, Ամերիա, վարկ, ավանդ, մասնաճյուղ, Երևան։"
+    )
+
+    def _transcribe_sync(audio_arr: np.ndarray, lang_code: str | None) -> str:
+        def _run(*, use_vad: bool, beam: int) -> str:
+            segments, _info = model.transcribe(
+                audio_arr,
+                language=lang_code,
+                vad_filter=use_vad,
+                beam_size=beam,
+                best_of=1,
+                initial_prompt=_HY_BANKING_HINT,
+                condition_on_previous_text=False,
+            )
+            return "".join(s.text for s in segments).strip()
+
+        with _transcribe_lock:
+            rms = float(np.sqrt(np.mean(np.square(audio_arr)))) if audio_arr.size else 0.0
+            # beam_size>1 improves Armenian word accuracy (CPU cost acceptable for PTT).
+            text = _run(use_vad=vad_filter, beam=5)
+            if not text and vad_filter and rms > 0.002:
+                logger.info("STT empty with VAD; retrying without VAD (rms=%.5f)", rms)
+                text = _run(use_vad=False, beam=5)
+            if not text and rms > 0.002:
+                logger.info("STT still empty; final pass beam=1 without VAD (rms=%.5f)", rms)
+                text = _run(use_vad=False, beam=1)
+            return text
+
     app = FastAPI(title="Local STT", version="0.1")
 
     @app.post("/transcribe")
@@ -95,12 +174,8 @@ def main() -> None:
         if audio.size == 0:
             return {"text": ""}
         try:
-            segments, _info = model.transcribe(
-                audio,
-                language=lang if lang else None,
-                vad_filter=False,
-            )
-            text = "".join(s.text for s in segments).strip()
+            lang_code = lang if lang else None
+            text = await asyncio.to_thread(_transcribe_sync, audio, lang_code)
             return {"text": text}
         except Exception as exc:
             logger.exception("Whisper transcribe failed")

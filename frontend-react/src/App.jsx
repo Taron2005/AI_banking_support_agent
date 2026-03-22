@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Room, RoomEvent, createLocalAudioTrack } from "livekit-client";
 import { MessageContent } from "./MessageContent.jsx";
+import { VoiceLiveHud } from "./VoiceLiveHud.jsx";
 
 const VOICE_DISCONNECTED = "disconnected";
 const VOICE_IDLE = "idle";
@@ -36,6 +37,9 @@ const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV ? "" : "http://127.0.0.1:8000");
 const LIVEKIT_IDENTITY = import.meta.env.VITE_LIVEKIT_IDENTITY || "web-user-1";
+/** Must match voice agent + backend LiveKit room so text /chat and voice share SessionState. */
+const LIVEKIT_ROOM = import.meta.env.VITE_LIVEKIT_ROOM || "banking-support-room";
+const VOICE_ALIGNED_SESSION_ID = `lk::${LIVEKIT_ROOM}::${LIVEKIT_IDENTITY}`;
 
 function normalizeLivekitWsUrl(url) {
   const u = (url || "").trim().replace(/\/+$/, "");
@@ -64,7 +68,7 @@ function voicePillClass(phase, connected) {
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
-  const [sessionId, setSessionId] = useState("web-session");
+  const [sessionId, setSessionId] = useState(VOICE_ALIGNED_SESSION_ID);
   const [verbose, setVerbose] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -79,6 +83,7 @@ export default function App() {
   const [voiceProcessingDetail, setVoiceProcessingDetail] = useState("");
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [voiceLog, setVoiceLog] = useState([]);
+  const [micPreviewStream, setMicPreviewStream] = useState(null);
   const roomRef = useRef(null);
   const micTrackRef = useRef(null);
   const assistantAudioElRef = useRef(null);
@@ -340,25 +345,72 @@ export default function App() {
             }
             return;
           }
+          if (t === "assistant.text.delta") {
+            const j = JSON.parse(text);
+            const frag = String(j.text || "");
+            if (!frag) return;
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last && last.role === "assistant" && last.streaming) {
+                return [
+                  ...m.slice(0, -1),
+                  { ...last, content: last.content + frag, t: Date.now() },
+                ];
+              }
+              return [
+                ...m,
+                {
+                  role: "assistant",
+                  content: frag,
+                  streaming: true,
+                  t: Date.now(),
+                  viaVoice: true,
+                },
+              ];
+            });
+            return;
+          }
           if (t === "assistant.text") {
             const body = JSON.parse(text);
             const ans = body.answer_text || "";
             if (ans) {
-              setMessages((m) => [
-                ...m,
-                {
-                  role: "assistant",
-                  content: ans,
-                  status: body.status,
-                  sources: [],
-                  trace: body.decision_trace || [],
-                  refusal: body.refusal_reason,
-                  answerSynthesis: body.answer_synthesis || null,
-                  llmError: body.llm_error || null,
-                  t: Date.now(),
-                  viaVoice: true,
-                },
-              ]);
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (last && last.role === "assistant" && last.streaming) {
+                  return [
+                    ...m.slice(0, -1),
+                    {
+                      role: "assistant",
+                      content: ans,
+                      status: body.status,
+                      sources: [],
+                      trace: body.decision_trace || [],
+                      refusal: body.refusal_reason,
+                      answerSynthesis: body.answer_synthesis || null,
+                      llmError: body.llm_error || null,
+                      t: Date.now(),
+                      viaVoice: true,
+                      streamed: Boolean(body.streamed),
+                    },
+                  ];
+                }
+                return [
+                  ...m,
+                  {
+                    role: "assistant",
+                    content: ans,
+                    status: body.status,
+                    sources: [],
+                    trace: body.decision_trace || [],
+                    refusal: body.refusal_reason,
+                    answerSynthesis: body.answer_synthesis || null,
+                    llmError: body.llm_error || null,
+                    t: Date.now(),
+                    viaVoice: true,
+                    streamed: Boolean(body.streamed),
+                  },
+                ];
+              });
             }
             setVoiceLog((p) => [...p, `assistant.text ${body.status || ""}`]);
             return;
@@ -409,7 +461,11 @@ export default function App() {
       const enc = new TextEncoder();
       await room.localParticipant.publishData(
         enc.encode(
-          JSON.stringify({ type: "start", participant_identity: room.localParticipant.identity }),
+          JSON.stringify({
+            type: "start",
+            participant_identity: room.localParticipant.identity,
+            session_id: sessionId,
+          }),
         ),
         {
           reliable: true,
@@ -421,17 +477,23 @@ export default function App() {
         track = await createLocalAudioTrack({
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
         });
         micTrackRef.current = track;
       }
       await room.localParticipant.publishTrack(track);
+      const prevStream =
+        track.mediaStream ||
+        (track.mediaStreamTrack ? new MediaStream([track.mediaStreamTrack]) : null);
+      setMicPreviewStream(prevStream);
       setVoicePhase(VOICE_LISTENING);
       setVoiceProcessingDetail("");
     } catch (e) {
+      setMicPreviewStream(null);
       setVoicePhase(VOICE_ERROR);
       setVoiceDetail(String(e.message || e));
     }
-  }, [voicePhase]);
+  }, [voicePhase, sessionId]);
 
   const stopVoiceTurn = useCallback(async () => {
     const room = roomRef.current;
@@ -441,7 +503,11 @@ export default function App() {
       const enc = new TextEncoder();
       await room.localParticipant.publishData(
         enc.encode(
-          JSON.stringify({ type: "end", participant_identity: room.localParticipant.identity }),
+          JSON.stringify({
+            type: "end",
+            participant_identity: room.localParticipant.identity,
+            session_id: sessionId,
+          }),
         ),
         {
           reliable: true,
@@ -451,11 +517,13 @@ export default function App() {
       await new Promise((r) => setTimeout(r, 220));
       const track = micTrackRef.current;
       if (track) await room.localParticipant.unpublishTrack(track);
+      setMicPreviewStream(null);
     } catch (e) {
+      setMicPreviewStream(null);
       setVoicePhase(VOICE_ERROR);
       setVoiceDetail(String(e.message || e));
     }
-  }, [voicePhase]);
+  }, [voicePhase, sessionId]);
 
   async function disconnectLiveKit() {
     const room = roomRef.current;
@@ -473,6 +541,7 @@ export default function App() {
     }
     micTrackRef.current = null;
     assistantAudioElRef.current = null;
+    setMicPreviewStream(null);
     setLkConnected(false);
     setVoicePhase(VOICE_DISCONNECTED);
     setVoiceDetail("");
@@ -510,7 +579,7 @@ export default function App() {
         <div>
           <div className="app-brand-title">Բանկային աջակցություն</div>
           <div className="app-brand-sub">
-            Հայերեն RAG · hy_model_index · Gemini · push-to-talk voice
+            Հայերեն RAG · hy_model_index · Gemini · LiveKit · push-to-talk + կենդանի ձայնի ցուցադրում
           </div>
         </div>
         <div className="pill-row">
@@ -595,6 +664,16 @@ export default function App() {
         </div>
       ) : null}
 
+      {lkConnected ? (
+        <div className="voice-hud-wrap">
+          <VoiceLiveHud
+            active={voicePhase === VOICE_LISTENING}
+            mediaStream={micPreviewStream}
+            speechLang="hy-AM"
+          />
+        </div>
+      ) : null}
+
       <main className="chat-main" style={{ display: "flex", flexDirection: "column" }}>
         {messages.length === 0 ? (
           <div className="hero-empty">
@@ -602,9 +681,9 @@ export default function App() {
             <ol>
               <li>Հարցրեք վարկերի, ավանդների կամ մասնաճյուղերի մասին տեքստով (ստորև)։</li>
               <li>
-                Կամ միացրեք ձայնը՝ <strong>Connect voice</strong>, ապա <strong>Mic</strong> — խոսեք հայերեն, ապա{" "}
-                <strong>Stop & send</strong>։ Ձեր խոսքը STT-ից հետո կհայտնվի զրույցում՝ <span className="voice-badge">STT</span>{" "}
-                նշանով, ապա՝ պատասխանը։
+                Կամ միացրեք ձայնը՝ <strong>Connect voice</strong>, ապա <strong>Mic</strong> — խոսելիս տեսնեք{" "}
+                <strong>կենդանի տեքստ և մակարդակի ցուցիչ</strong> (նախադիտում). Սեղմեք <strong>Stop &amp; send</strong> —
+                սերվերը STT-ով կուղարկի հարցը, պատասխանը կգա TTS-ով։
               </li>
               <li>Պատասխանները հիմնված են միայն բանկերի պաշտոնական տվյալների վրա (hy_model_index + Gemini)։</li>
             </ol>
@@ -622,8 +701,16 @@ export default function App() {
               {m.viaVoice && !m.voiceTranscript ? <span className="voice-badge">voice</span> : null}
             </div>
           ) : (
-            <div key={`a-${i}-${m.t}`} className="bubble-assistant">
+            <div
+              key={`a-${i}-${m.t}`}
+              className={`bubble-assistant${m.streaming ? " bubble-assistant-streaming" : ""}`}
+            >
               <MessageContent text={m.content} />
+              {m.streaming ? (
+                <span className="stream-cursor" aria-hidden>
+                  ▍
+                </span>
+              ) : null}
               {m.status && m.status !== "error" ? (
                 <div className="bubble-meta">
                   {m.status}

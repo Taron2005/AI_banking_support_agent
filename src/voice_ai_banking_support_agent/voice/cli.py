@@ -4,16 +4,6 @@ import argparse
 import json
 from pathlib import Path
 
-try:
-    from pathlib import Path
-
-    from dotenv import load_dotenv
-
-    _root = Path(__file__).resolve().parents[3]
-    load_dotenv(_root / ".env", override=False)
-except ImportError:
-    pass
-
 from ..config import load_config
 from ..runtime.llm_config import load_llm_settings
 from ..runtime.runtime_config import load_runtime_settings
@@ -93,6 +83,7 @@ def run_voice_smoke(
     voice_config_path: str | None,
     index_name: str,
 ) -> None:
+    _load_dotenv_for_project(project_root)
     app_cfg = load_config(project_root=Path(project_root).resolve(), config_yaml=Path(app_config_path).resolve() if app_config_path else None)
     runtime_settings = load_runtime_settings(runtime_config_path)
     llm_settings = load_llm_settings(llm_config_path)
@@ -151,14 +142,33 @@ def run_livekit_agent(
     _log_llm_settings(llm_settings)
     vpath = _resolve_voice_config_path(project_root, voice_config_path)
     voice_cfg = load_voice_config(vpath)
-    runtime = build_runtime_for_voice(
-        app_config=app_cfg, runtime_settings=runtime_settings, llm_settings=llm_settings
-    )
     deps = build_voice_dependencies(voice_cfg)
     _log_voice_providers(voice_cfg, deps)
+    chat_client = None
+    runtime = None
+    state_store = None
+    if voice_cfg.behavior.route_through_runtime_api:
+        from .runtime_chat_client import RuntimeChatClient
+
+        chat_client = RuntimeChatClient(
+            voice_cfg.behavior.runtime_api_url,
+            timeout_seconds=voice_cfg.behavior.runtime_api_timeout_seconds,
+        )
+        _voice_log.info(
+            "Voice ↔ same session as web chat: POST %s/chat (session_id from UI). "
+            "In-process mode: set VOICE_RUNTIME_HTTP=0 (needs duplicate LLM/embed load).",
+            chat_client.base_url,
+        )
+    else:
+        runtime = build_runtime_for_voice(
+            app_config=app_cfg, runtime_settings=runtime_settings, llm_settings=llm_settings
+        )
+        state_store = SessionStateStore()
+        _voice_log.info("Voice uses in-process RuntimeOrchestrator (VOICE_RUNTIME_HTTP=0).")
     agent = LiveKitVoiceAgent(
         runtime=runtime,
-        state_store=SessionStateStore(),
+        state_store=state_store,
+        chat_client=chat_client,
         stt_provider=deps.stt,
         tts_provider=deps.tts,
         voice_config=voice_cfg,

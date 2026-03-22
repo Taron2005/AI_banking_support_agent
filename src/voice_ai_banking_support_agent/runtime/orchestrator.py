@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import Iterator
 
 from ..models import TopicLabel
 from .answer_generator import (
@@ -19,7 +20,7 @@ from .evidence_checker import EvidenceChecker
 from .evidence_select import dedupe_urls
 from .followup_resolver import FollowUpResolver
 from .models import RuntimeResponse, SessionState, TopicClassification
-from .query_normalizer import normalize_query
+from .query_normalizer import normalize_query, repair_stt_transcript
 from .orchestration_policy import dominant_bank_key_from_chunks, supported_bank_keys_csv
 from .rag_prompts import REFUSAL_RULES
 from .refusal import bank_clarification_message, refusal_message
@@ -109,6 +110,30 @@ class RuntimeRequest:
     verbose: bool = False
 
 
+@dataclass(frozen=True)
+class _PendingLlmTurn:
+    """Internal: RAG + gates passed; ready for LLM or extractive answer synthesis."""
+
+    normalized: str
+    effective_query: str
+    runtime_topic: str
+    prepared: list
+    bank_keys: frozenset[str] | None
+    conv_context: str | None
+    answer_mode: AnswerMode
+    trace: list[str]
+    retrieved: list
+    verbose: bool
+
+
+@dataclass(frozen=True)
+class RuntimeStreamChunk:
+    """Streaming turn: token deltas from Gemini, then a single terminal ``done`` response."""
+
+    text_delta: str | None = None
+    done: RuntimeResponse | None = None
+
+
 class RuntimeOrchestrator:
     """Main text-runtime orchestration pipeline."""
 
@@ -172,9 +197,9 @@ class RuntimeOrchestrator:
         self._orchestration = orchestration or OrchestrationSettings()
         self._bank_aliases = bank_aliases or getattr(bank_detector, "_aliases", {})
 
-    def handle(self, req: RuntimeRequest, state: SessionState) -> RuntimeResponse:
+    def _dispatch_until_llm(self, req: RuntimeRequest, state: SessionState) -> RuntimeResponse | _PendingLlmTurn:
         trace: list[str] = []
-        normalized = normalize_query(req.query)
+        normalized = repair_stt_transcript(req.query)
         trace.append(f"normalized={normalized}")
         working_query, forced_topic_from_pending = self._consume_pending_clarification(normalized, state)
         if working_query != normalized:
@@ -340,15 +365,31 @@ class RuntimeOrchestrator:
                     )
 
         ctx_parts: list[str] = []
+        low_eff = effective_query.lower()
+        detail_markers = (
+            "մանրամասն",
+            "ավելի",
+            "բացատրիր",
+            "լայնածավալ",
+            "ամբողջությամբ",
+            "explain",
+            "more detail",
+            "tell me more",
+        )
+        if any(m in low_eff for m in detail_markers):
+            ctx_parts.append(
+                "Օգտատերը խնդրում է մանրամասն, կառուցվածքավոր պատասխան՝ ապացույցում երևացող փաստերի սահմաններում "
+                "(առանց արտաքին գիտելիքի)․ չսահմանափակես քեզ 2–3 նախադասությամբ, եթե ապացույցը հարստ է։"
+            )
         if followup.used_followup_context or working_query != normalized:
             ctx_parts.append(
                 "Նշում․ օգտատիրոջ վերջին հաղորդագրությունը կարող է լինել կարճ (օր. միայն բանկի անուն)՝ "
                 "լրացնելով նախորդ հարցը․ պատասխանի համակցված նշանակությունը, ոչ թե միայն կարճ տողը։"
             )
         for prev_u in state.recent_user_turns[-5:]:
-            ctx_parts.append(f"Նախորդ հարց՝ {prev_u[:360]}")
+            ctx_parts.append(f"Նախորդ հարց՝ {prev_u[:520]}")
         for prev_a in state.recent_assistant_turns[-4:]:
-            ctx_parts.append(f"Նախորդ AI պատասխան (կրճատ)՝ {prev_a[:420]}")
+            ctx_parts.append(f"Նախորդ AI պատասխան (կրճատ)՝ {prev_a[:900]}")
         conv_context = "\n".join(ctx_parts) if ctx_parts else None
 
         prepared = prepare_evidence_for_answer(retrieved, max_chunks=self._max_evidence_chunks)
@@ -365,50 +406,102 @@ class RuntimeOrchestrator:
             answer_mode = "single_bank"
         trace.append(f"answer_mode={answer_mode}")
 
-        if isinstance(self._answer_generator, LLMAnswerGenerator):
-            ar = self._answer_generator.generate_answer_result(
-                effective_query,
-                runtime_topic,
-                prepared,
-                bank_keys,
-                context=conv_context,
-                answer_mode=answer_mode,
-            )
-        else:
-            text_only = self._answer_generator.generate(
-                effective_query,
-                runtime_topic,
-                prepared,
-                bank_keys,
-                context=conv_context,
-            )
-            ar = AnswerResult(text=text_only, answer_synthesis="extractive_only", llm_error=None)
+        return _PendingLlmTurn(
+            normalized=normalized,
+            effective_query=effective_query,
+            runtime_topic=runtime_topic,
+            prepared=prepared,
+            bank_keys=bank_keys,
+            conv_context=conv_context,
+            answer_mode=answer_mode,
+            trace=trace,
+            retrieved=retrieved,
+            verbose=req.verbose,
+        )
 
+    def _build_answered_response(
+        self, pre: _PendingLlmTurn, ar: AnswerResult, state: SessionState
+    ) -> RuntimeResponse:
         self._clear_pending_clarification(state)
-        self._update_state(state, normalized, ar.text, bank_keys, runtime_topic)
-        det_one, det_list = _response_bank_fields(bank_keys)
+        self._update_state(state, pre.normalized, ar.text, pre.bank_keys, pre.runtime_topic)
+        det_one, det_list = _response_bank_fields(pre.bank_keys)
         return RuntimeResponse(
             answer_text=ar.text,
             status="answered",
             answer_synthesis=ar.answer_synthesis,
             llm_error=ar.llm_error,
-            detected_topic=runtime_topic,
+            detected_topic=pre.runtime_topic,
             detected_bank=det_one,
             detected_banks=det_list,
             used_sources=dedupe_urls(
-                [c.chunk.source_url for c in retrieved if getattr(c.chunk, "source_url", None)],
+                [c.chunk.source_url for c in pre.retrieved if getattr(c.chunk, "source_url", None)],
                 max_n=8,
             ),
             retrieved_chunks_summary=[
-                f"{c.chunk.bank_key}/{c.chunk.topic} {c.score:.3f} {c.chunk.section_title}" for c in retrieved[:3]
+                f"{c.chunk.bank_key}/{c.chunk.topic} {c.score:.3f} {c.chunk.section_title}"
+                for c in pre.retrieved[:3]
             ],
             state_updates={
-                "last_topic": runtime_topic,
+                "last_topic": pre.runtime_topic,
                 "last_bank": det_one or "",
                 "detected_banks": ",".join(det_list),
             },
-            decision_trace=trace if req.verbose else [],
+            decision_trace=pre.trace if pre.verbose else [],
         )
+
+    def handle(self, req: RuntimeRequest, state: SessionState) -> RuntimeResponse:
+        pre = self._dispatch_until_llm(req, state)
+        if isinstance(pre, RuntimeResponse):
+            return pre
+        if isinstance(self._answer_generator, LLMAnswerGenerator):
+            ar = self._answer_generator.generate_answer_result(
+                pre.effective_query,
+                pre.runtime_topic,
+                pre.prepared,
+                pre.bank_keys,
+                context=pre.conv_context,
+                answer_mode=pre.answer_mode,
+            )
+        else:
+            text_only = self._answer_generator.generate(
+                pre.effective_query,
+                pre.runtime_topic,
+                pre.prepared,
+                pre.bank_keys,
+                context=pre.conv_context,
+            )
+            ar = AnswerResult(text=text_only, answer_synthesis="extractive_only", llm_error=None)
+        return self._build_answered_response(pre, ar, state)
+
+    def stream_handle(self, req: RuntimeRequest, state: SessionState) -> Iterator[RuntimeStreamChunk]:
+        pre = self._dispatch_until_llm(req, state)
+        if isinstance(pre, RuntimeResponse):
+            yield RuntimeStreamChunk(done=pre)
+            return
+        if not isinstance(self._answer_generator, LLMAnswerGenerator):
+            text_only = self._answer_generator.generate(
+                pre.effective_query,
+                pre.runtime_topic,
+                pre.prepared,
+                pre.bank_keys,
+                context=pre.conv_context,
+            )
+            ar = AnswerResult(text=text_only, answer_synthesis="extractive_only", llm_error=None)
+            yield RuntimeStreamChunk(done=self._build_answered_response(pre, ar, state))
+            return
+        for piece in self._answer_generator.generate_answer_result_stream(
+            pre.effective_query,
+            pre.runtime_topic,
+            pre.prepared,
+            pre.bank_keys,
+            context=pre.conv_context,
+            answer_mode=pre.answer_mode,
+        ):
+            if piece.delta:
+                yield RuntimeStreamChunk(text_delta=piece.delta)
+            if piece.result is not None:
+                yield RuntimeStreamChunk(done=self._build_answered_response(pre, piece.result, state))
+                return
 
     @staticmethod
     def _update_state(

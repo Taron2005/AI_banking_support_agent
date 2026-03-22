@@ -25,9 +25,21 @@ def test_topic_classifier_in_scope_english_deposit() -> None:
     assert out.label == "deposit"
 
 
-def test_topic_classifier_ambiguous_when_only_weak_signals() -> None:
+def test_topic_classifier_weak_signals_single_dominant_topic() -> None:
     clf = TopicClassifier()
     out = clf.classify("What is the interest?")
+    assert out.label == "deposit"
+    assert out.reason == "weak_signals_single_dominant_topic"
+
+
+def test_topic_classifier_ambiguous_when_weak_signals_tie() -> None:
+    clf = TopicClassifier()
+    out = clf.classify("տոկոս")
     assert out.label == "ambiguous"
-    assert out.reason == "weak_topic_signals_only_need_explicit_product"
+
+
+def test_topic_classifier_fuzzy_typo_credit() -> None:
+    clf = TopicClassifier()
+    out = clf.classify("ինչ վարքեր կան acba")
+    assert out.label == "credit"
 

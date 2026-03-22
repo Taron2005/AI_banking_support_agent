@@ -12,6 +12,9 @@ class TopicClassifierSettings(BaseModel):
     ambiguous_margin: float = 0.2
     strong_term_weight: float = 1.5
     weak_term_weight: float = 0.75
+    # Match STT/typo variants (SequenceMatcher on tokens).
+    fuzzy_match: bool = True
+    fuzzy_ratio: float = 0.8
 
 
 class FollowUpSettings(BaseModel):
@@ -81,9 +84,18 @@ class RuntimeSettings(BaseModel):
     orchestration: OrchestrationSettings = Field(default_factory=OrchestrationSettings)
     bank_aliases: dict[str, list[str]] = Field(
         default_factory=lambda: {
-            "ameriabank": ["ameriabank", "ameria", "ամերիա", "ամերիաբանկ"],
-            "acba": ["acba", "ակբա", "acba bank"],
-            "idbank": ["idbank", "id bank", "այդիբանկ", "իդբանկ"],
+            "ameriabank": [
+                "ameriabank",
+                "ameria bank",
+                "ameria",
+                "ամերիա",
+                "ամերիաբանկ",
+                "ամերիա բանկ",
+                "ամերիայի",
+                "ամերիաբանկի",
+            ],
+            "acba": ["acba", "acba bank", "ակբա", "ակբա բանկ"],
+            "idbank": ["idbank", "id bank", "այդիբանկ", "իդբանկ", "այդի բանկ"],
         }
     )
 

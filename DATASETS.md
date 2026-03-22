@@ -4,7 +4,8 @@
 
 | Role | Path |
 |------|------|
-| Chunks, raw HTML, branches, indexes | `data_manifest_update_hy/` |
+| Chunks, cleaned docs, branches, indexes | `data_manifest_update_hy/` |
+| Raw HTML cache (local only, gitignored) | `data_manifest_update_hy/raw_html/` — produced by **`scrape`**, omitted from the remote repo to keep size down |
 | FAISS index name | `hy_model_index` → `data_manifest_update_hy/index/hy_model_index/` |
 | App config file | `validation_manifest_update_hy.yaml` |
 

@@ -10,5 +10,5 @@ endpoint: null
 api_key: null
 model: gemini-2.0-flash
 timeout_seconds: 120
-temperature: 0.06
+temperature: 0.18
 max_tokens: 8192
