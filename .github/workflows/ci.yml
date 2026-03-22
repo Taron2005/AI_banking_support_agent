@@ -1,0 +1,44 @@
+# Verifies clone → pip install → pytest on a clean Ubuntu runner (no API keys).
+# This is the strongest repeatable check you can offer reviewers; local Windows/Mac
+# still depends on Docker, Node, and firewall as documented in README.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip wheel
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
+
+      - name: Run tests (exclude slow / full embedding e2e)
+        env:
+          TRANSFORMERS_NO_TF: "1"
+          TRANSFORMERS_NO_FLAX: "1"
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
+          HF_HUB_DISABLE_PROGRESS_BARS: "1"
+        run: python -m pytest tests -m "not slow" -q
